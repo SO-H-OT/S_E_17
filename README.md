@@ -19,7 +19,6 @@
 
 ```bash
 git clone <repository-url>
-cd 软件工程/测试
 ```
 
 ### 2. 设置后端环境
@@ -42,7 +41,7 @@ CREATE DATABASE oceanmonitor;
 3. 导入示例数据
 ```bash
 # 使用项目中自带的SQL文件导入数据
-mysql -u root -p oceanmonitor < backend/database/oceanmonitor_data.sql
+mysql -u root -p oceanmonitor < oceanmonitor_data.sql
 ```
 
 4. 修改数据库配置
@@ -63,6 +62,8 @@ DB_CONFIG = {
 ```bash
 cd frontend
 npm install
+# 安装特定需要的包
+npm install react react-dom @mui/material @mui/icons-material @emotion/react @emotion/styled recharts axios react-router-dom
 ```
 
 ## 运行项目
