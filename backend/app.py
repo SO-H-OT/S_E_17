@@ -5,6 +5,10 @@ from flask_cors import CORS
 import requests
 import os
 import pymysql
+from werkzeug.utils import secure_filename
+import time
+from functools import wraps
+from sklearn.linear_model import LinearRegression  # 修改导入语句
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {
@@ -13,11 +17,17 @@ CORS(app, resources={r"/*": {
     "allow_headers": ["Content-Type", "Authorization"]  # 允许的请求头
 }})
 
+# 配置允许的文件上传类型
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 # 数据库配置
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
-    'password': '',  # 请更改为你的数据库密码
+    'password': '123456',  # 请更改为你的数据库密码
     'db': 'oceanmonitor',
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
@@ -51,6 +61,12 @@ def home():
             "违规信息": [
                 "/api/violations - 获取违规数据",
                 "/api/user-violations - 获取用户违规数据"
+            ],
+            "海洋生物识别": [
+                "/api/identify-marine-life - 上传图片进行海洋生物识别 (POST)"
+            ],
+            "预测": [
+                "/api/predict-length - 预测长度 (POST)"
             ]
         }
     })
@@ -543,7 +559,207 @@ def get_user(username):
             return jsonify({"success": False, "message": "用户未找到"}), 404
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-    
+
+# 添加速率限制装饰器
+def rate_limit(max_per_minute=10):
+    min_interval = 60.0 / max_per_minute
+    last_called = [0.0]  # 使用列表存储，以便在闭包中修改
+
+    def decorator(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            now = time.time()
+            elapsed = now - last_called[0]
+            if elapsed < min_interval:
+                time.sleep(min_interval - elapsed)
+            result = func(*args, **kwargs)
+            last_called[0] = time.time()
+            return result
+        return wrapped
+    return decorator
+
+# 添加重试机制
+def retry_on_ratelimit(max_retries=3, delay=1):
+    def decorator(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if 'rate_limit' in str(e).lower():
+                        retries += 1
+                        if retries == max_retries:
+                            raise
+                        time.sleep(delay * (2 ** (retries - 1)))  # 指数退避
+                    else:
+                        raise
+        return wrapped
+    return decorator
+
+@app.route('/api/identify-marine-life', methods=['POST'])
+@rate_limit(max_per_minute=10)  # 限制每分钟最多10个请求
+@retry_on_ratelimit(max_retries=3, delay=1)
+def identify_marine_life():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "未找到文件"}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "未选择文件"}), 400
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join('uploads', filename)
+        
+        os.makedirs('uploads', exist_ok=True)
+        file.save(filepath)
+
+        try:
+            api_key = "sk-c0oTwzXO874NWG0Ud0nh1SbRKjdhbfNSsCTa98RxyIHpUbzU"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # 读取图片文件并转换为base64
+            with open(filepath, 'rb') as image_file:
+                import base64
+                image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
+            
+            # 修改后的请求格式
+            payload = {
+                "model": "moonshot-v1-32k",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "请识别这张图片中的海洋生物种类，只需回复生物的名称。"
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image_base64}"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            # 发送请求到API端点
+            response = requests.post(
+                "https://api.moonshot.cn/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                species = result.get('choices', [{}])[0].get('message', {}).get('content', '未知生物')
+                return jsonify({"success": True, "data": {"species": species}})
+            elif 'rate_limit' in response.text.lower():
+                return jsonify({
+                    "success": False,
+                    "error": "服务器繁忙，请稍后再试",
+                    "retry_after": "60"
+                }), 429
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "识别失败，请重试",
+                    "details": response.text
+                }), response.status_code
+                
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+        finally:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+    else:
+        return jsonify({"success": False, "error": "不支持的文件格式"}), 400
+
+def load_data(file_path):
+    data = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            parts = line.strip().split(', ')
+            if len(parts) == 3:
+                try:
+                    values = list(map(float, parts))
+                    data.append(values)
+                except ValueError:
+                    print(f"跳过无效行: {line.strip()}")
+    return np.array(data)
+
+@app.route('/api/predict-length', methods=['POST'])
+def predict_length():
+    try:
+        data = request.get_json()
+        input_periods = data.get('periods')
+        
+        if not input_periods or len(input_periods) != 3:
+            return jsonify({
+                "success": False,
+                "error": "请提供三个周期的数据"
+            }), 400
+
+        # 加载历史数据
+        try:
+            file_path = os.path.join(os.path.dirname(__file__), 'output.txt')
+            training_data = load_data(file_path)
+            
+            if training_data.size == 0:
+                return jsonify({
+                    "success": False,
+                    "error": "无法加载训练数据"
+                }), 500
+                
+            # 构建训练数据
+            X = training_data[:, :2]  # 使用前两个周期作为特征
+            y = training_data[:, 2]   # 使用第三个周期作为目标
+            
+            # 创建并训练模型
+            model = LinearRegression()
+            model.fit(X, y)
+            
+            # 使用用户输入的数据进行预测
+            input_features = np.array(input_periods[:2]).reshape(1, -1)
+            predicted_length = model.predict(input_features)[0]
+            
+            # 确保预测结果合理
+            min_growth = 1.0
+            max_growth = 1.5
+            last_period = input_periods[-1]
+            
+            if predicted_length < last_period * min_growth:
+                predicted_length = last_period * min_growth
+            elif predicted_length > last_period * max_growth:
+                predicted_length = last_period * max_growth
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "predicted_length": float(predicted_length),
+                    "current_length": float(last_period)
+                }
+            })
+            
+        except FileNotFoundError:
+            return jsonify({
+                "success": False,
+                "error": "训练数据文件不存在"
+            }), 500
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
