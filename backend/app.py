@@ -66,8 +66,6 @@ users = [
     {"username": "赵六", "password": "password012", "gender": "女", "age": 29, "role": "admin", "unit": "公安局"},
 ]
 
-# 读取CSV文件
-df = pd.read_csv('Fish.csv')
 
 def get_fish_statistics():
     conn = get_db_connection()
