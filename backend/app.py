@@ -59,14 +59,6 @@ def home():
 def get_db_connection():
     return pymysql.connect(**DB_CONFIG)
 
-users = [
-    {"username": "张三", "password": "password123", "gender": "男", "age": 28, "role": "admin", "unit": "交通管理局"},
-    {"username": "李四", "password": "password456", "gender": "女", "age": 24, "role": "user", "unit": "市政府"},
-    {"username": "王五", "password": "password789", "gender": "男", "age": 35, "role": "user", "unit": "教育局"},
-    {"username": "赵六", "password": "password012", "gender": "女", "age": 29, "role": "admin", "unit": "公安局"},
-]
-
-
 def get_fish_statistics():
     conn = get_db_connection()
     with conn.cursor() as cursor:
@@ -378,22 +370,25 @@ def register():
     if not all([username, password, gender, age, role, unit]):
         return jsonify({"success": False, "error": "请提供完整的用户信息"}), 400
     
-    # 检查用户名是否已经存在
-    if any(user['username'] == username for user in users):
-        return jsonify({"success": False, "error": "用户名已存在"}), 400
-    
-    # 创建新用户
-    new_user = {
-        "username": username,
-        "password": password,  # 用户的密码
-        "gender": gender,
-        "age": age,
-        "role": role,
-        "unit": unit
-    }
-    users.append(new_user)
-
-    return jsonify({"success": True, "message": "注册成功"}), 201
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # 检查用户名是否已经存在
+            cursor.execute("SELECT username FROM users WHERE username = %s", (username,))
+            if cursor.fetchone():
+                return jsonify({"success": False, "error": "用户名已存在"}), 400
+            
+            # 创建新用户
+            cursor.execute(
+                "INSERT INTO users (username, password, gender, age, role, unit) VALUES (%s, %s, %s, %s, %s, %s)",
+                (username, password, gender, age, role, unit)
+            )
+        
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": "注册成功"}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -404,30 +399,48 @@ def login():
     if not username or not password:
         return jsonify({"success": False, "error": "缺少用户名或密码"}), 400
     
-    # 查找用户
-    user = next((user for user in users if user['username'] == username), None)
-    if not user:
-        return jsonify({"success": False, "error": "用户名不存在"}), 400
-    
-    # 检查密码是否正确
-    if user['password'] != password:
-        return jsonify({"success": False, "error": "密码错误"}), 400
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # 查找用户
+            cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+        
+        conn.close()
+        
+        if not user:
+            return jsonify({"success": False, "error": "用户名不存在"}), 400
+        
+        # 检查密码是否正确
+        if user['password'] != password:
+            return jsonify({"success": False, "error": "密码错误"}), 400
 
-    return jsonify({
-        "success": True,
-        "message": "登录成功",
-        "user": {
-            "username": user['username'],
-            "gender": user['gender'],
-            "age": user['age'],
-            "role": user['role'],
-            "unit": user['unit']
-        }
-    }), 200
+        return jsonify({
+            "success": True,
+            "message": "登录成功",
+            "user": {
+                "username": user['username'],
+                "gender": user['gender'],
+                "age": user['age'],
+                "role": user['role'],
+                "unit": user['unit']
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    return jsonify(users)
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT username, gender, age, role, unit FROM users")
+            users = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({"success": True, "data": users})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/users/<string:username>', methods=['DELETE'])
 def delete_user(username):
@@ -435,16 +448,28 @@ def delete_user(username):
     if not operator or operator.get('role') != 'admin':
         return jsonify({"success": False, "message": "权限不足，只有管理员可以删除用户"}), 403
 
-    global users
-    user = next((u for u in users if u['username'] == username), None)  # 根据用户名查找用户
-    if user:
-        if user['role'] == 'admin':  # 不允许删除管理员账号
-            return jsonify({"success": False, "message": "不能删除管理员账号"}), 403
-
-        users = [u for u in users if u['username'] != username]  # 删除用户
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # 根据用户名查找用户
+            cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+            
+            if not user:
+                return jsonify({"success": False, "message": "用户未找到"}), 404
+            
+            if user['role'] == 'admin':  # 不允许删除管理员账号
+                return jsonify({"success": False, "message": "不能删除管理员账号"}), 403
+            
+            # 删除用户
+            cursor.execute("DELETE FROM users WHERE username = %s", (username,))
+        
+        conn.commit()
+        conn.close()
+        
         return jsonify({"success": True, "message": "用户已删除"})
-    else:
-        return jsonify({"success": False, "message": "用户未找到"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/users/<string:username>', methods=['PUT'])
 def update_user(username):
@@ -454,28 +479,70 @@ def update_user(username):
     if operator_role != "admin":
         return jsonify({"success": False, "message": "权限不足，只有管理员可以修改用户信息"}), 403
 
-    user = next((u for u in users if u['username'] == username), None)  # 根据用户名查找用户
-    if user:
-        # 更新用户信息
-        user.update({
-            "username": data.get("username", user["username"]),
-            "gender": data.get("gender", user["gender"]),
-            "age": data.get("age", user["age"]),
-            "role": data.get("role", user["role"]),
-            "unit": data.get("unit", user["unit"]),
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # 根据用户名查找用户
+            cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+            
+            if not user:
+                return jsonify({"success": False, "message": "用户未找到"}), 404
+            
+            # 更新用户信息
+            cursor.execute(
+                """UPDATE users 
+                   SET username = %s, gender = %s, age = %s, role = %s, unit = %s 
+                   WHERE username = %s""",
+                (
+                    data.get("username", user["username"]),
+                    data.get("gender", user["gender"]),
+                    data.get("age", user["age"]),
+                    data.get("role", user["role"]),
+                    data.get("unit", user["unit"]),
+                    username
+                )
+            )
+        
+        conn.commit()
+        
+        # 获取更新后的用户数据
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE username = %s", (data.get("username", username),))
+            updated_user = cursor.fetchone()
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True, 
+            "message": "用户信息已更新", 
+            "user": {
+                "username": updated_user["username"],
+                "gender": updated_user["gender"],
+                "age": updated_user["age"],
+                "role": updated_user["role"],
+                "unit": updated_user["unit"]
+            }
         })
-        return jsonify({"success": True, "message": "用户信息已更新", "user": user})
-    else:
-        return jsonify({"success": False, "message": "用户未找到"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/api/get_user/<username>', methods=['GET'])
 def get_user(username):
-    user = next((u for u in users if u['username'] == username), None)
-    if user:
-        return jsonify({ "user": user })  
-    else:
-        return jsonify({ "message": "用户未找到" }), 404
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT username, gender, age, role, unit FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+        conn.close()
+        
+        if user:
+            return jsonify({"success": True, "user": user})
+        else:
+            return jsonify({"success": False, "message": "用户未找到"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
     
 
 if __name__ == '__main__':

@@ -13,8 +13,16 @@ function UserListPage() {
   const fetchUsers = async () => {
     try {
       const response = await axios.get('http://localhost:5000/api/users');
-      setUsers(response.data);
+      // 正确处理后端返回的数据格式：{success: true, data: [...用户数组]}
+      if (response.data && response.data.success && Array.isArray(response.data.data)) {
+        setUsers(response.data.data);
+      } else {
+        setUsers([]);
+        console.error('API返回的数据格式不符合预期:', response.data);
+        setError('获取用户数据格式不正确');
+      }
     } catch (err) {
+      setUsers([]);
       setError('获取用户数据失败: ' + err.message);
     }
   };
@@ -80,35 +88,41 @@ function UserListPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {users.map(user => (
-              <TableRow key={user.username}>
-                <TableCell>{user.username}</TableCell>
-                <TableCell>{user.gender}</TableCell>
-                <TableCell>{user.age}</TableCell>
-                <TableCell>{user.role}</TableCell>
-                <TableCell>{user.unit}</TableCell>
-                <TableCell align="center">
-                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      size="small"
-                      onClick={() => handleEdit(user.username)}
-                    >
-                      修改
-                    </Button>
-                    <Button
-                      variant="contained"
-                      color="error"
-                      size="small"
-                      onClick={() => handleDelete(user.username)}
-                    >
-                      删除
-                    </Button>
-                  </Box>
-                </TableCell>
+            {users.length > 0 ? (
+              users.map(user => (
+                <TableRow key={user.username}>
+                  <TableCell>{user.username}</TableCell>
+                  <TableCell>{user.gender}</TableCell>
+                  <TableCell>{user.age}</TableCell>
+                  <TableCell>{user.role}</TableCell>
+                  <TableCell>{user.unit}</TableCell>
+                  <TableCell align="center">
+                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        size="small"
+                        onClick={() => handleEdit(user.username)}
+                      >
+                        修改
+                      </Button>
+                      <Button
+                        variant="contained"
+                        color="error"
+                        size="small"
+                        onClick={() => handleDelete(user.username)}
+                      >
+                        删除
+                      </Button>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={6} align="center">暂无用户数据</TableCell>
               </TableRow>
-            ))}
+            )}
           </TableBody>
         </Table>
       </TableContainer>

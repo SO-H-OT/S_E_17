@@ -474,6 +474,31 @@ INSERT INTO `fishes` VALUES ('Bream',242,23.2,25.4,30,11.52,4.02),('Bream',290,2
 /*!40000 ALTER TABLE `fishes` ENABLE KEYS */;
 
 --
+-- Table structure for table `users`
+--
+
+DROP TABLE IF EXISTS `users`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `users` (
+  `username` varchar(255) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `gender` varchar(255) DEFAULT NULL,
+  `age` int DEFAULT NULL,
+  `role` varchar(255) DEFAULT NULL,
+  `unit` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `users`
+--
+
+/*!40000 ALTER TABLE `users` DISABLE KEYS */;
+/*!40000 ALTER TABLE `users` ENABLE KEYS */;
+
+--
 -- Dumping routines for database 'ocean-monitor'
 --
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -486,4 +511,4 @@ INSERT INTO `fishes` VALUES ('Bream',242,23.2,25.4,30,11.52,4.02),('Bream',290,2
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-05-10 17:37:59
+-- Dump completed on 2025-05-13 11:19:09
