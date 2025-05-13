@@ -150,22 +150,23 @@ CREATE TABLE `fishes` (
 
 此表用于存储鱼类的详细测量数据，包括不同种类的鱼、它们的重量和各种尺寸测量，为系统的鱼类数据分析功能提供数据支持。
 
-### 用户表 (内存中存储)
+### 用户表 (`users`)
 
-目前用户数据存储在应用内存中，结构如下：
+用户数据现在存储在数据库中，表结构如下：
 
+```sql
+CREATE TABLE `users` (
+  `username` varchar(255) NOT NULL,  -- 用户名
+  `password` varchar(255) NOT NULL,  -- 密码
+  `gender` varchar(50) NOT NULL,     -- 性别
+  `age` int NOT NULL,                -- 年龄
+  `role` varchar(50) NOT NULL,       -- 角色(admin或user)
+  `unit` varchar(255) NOT NULL,      -- 单位
+  PRIMARY KEY (`username`)
+);
 ```
-{
-  "username": 用户名(字符串),
-  "password": 密码(字符串),
-  "gender": 性别(字符串),
-  "age": 年龄(数字),
-  "role": 角色(字符串,admin或user),
-  "unit": 单位(字符串)
-}
-```
 
-在生产环境中，建议将用户数据迁移到数据库表中进行永久存储。
+此表存储所有用户的登录凭证和个人信息，用于系统的用户认证、授权和用户信息管理功能。管理员用户可以管理其他用户账户。
 
 ## 数据导入
 
