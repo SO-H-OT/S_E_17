@@ -64,6 +64,9 @@ cd frontend
 npm install
 # 安装特定需要的包
 npm install react react-dom @mui/material @mui/icons-material @emotion/react @emotion/styled recharts axios react-router-dom
+
+# 安装ngrok，初步支持移动端
+npm install -g ngrok
 ```
 
 ## 运行项目
