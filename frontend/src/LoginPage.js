@@ -1,8 +1,7 @@
-import React, { useState } from "react";
-import { TextField, Button, Container, Typography, Paper, Box } from "@mui/material";
+import React, { useState, useEffect } from "react";
+import { TextField, Button, Container, Typography, Paper, Box, CircularProgress } from "@mui/material";
 import MenuItem from '@mui/material/MenuItem';
-
-import axios from "axios";
+import { getApiBaseUrl, loginUser, registerUser } from "./services/api";
 
 function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -15,6 +14,24 @@ function LoginPage() {
     unit: "",
   });
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [apiBaseUrl, setApiBaseUrl] = useState("");
+
+  // 加载时获取后端API地址
+  useEffect(() => {
+    const initializeApi = async () => {
+      try {
+        const baseUrl = await getApiBaseUrl();
+        setApiBaseUrl(baseUrl);
+      } catch (error) {
+        console.error("Failed to initialize API:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeApi();
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -23,39 +40,46 @@ function LoginPage() {
 
   const handleLogin = async () => {
     try {
-      const response = await axios.post("http://localhost:5000/api/login", {
-        username: formData.username,
-        password: formData.password,
-      });
-      if (response.data.success) {
+      setMessage("");
+      const result = await loginUser(formData.username, formData.password);
+      if (result.success) {
         localStorage.setItem("isLoggedIn", "true");
-        localStorage.setItem("userInfo", JSON.stringify(response.data.user));
+        localStorage.setItem("userInfo", JSON.stringify(result.user));
         // 使用直接的页面跳转确保刷新状态
         window.location.replace('/');
       } else {
-        setMessage(response.data.error);
+        setMessage(result.error);
       }
     } catch (error) {
+      console.error("Login error:", error);
       setMessage("登录失败，请重试");
     }
   };
 
   const handleRegister = async () => {
     try {
-      const response = await axios.post(
-        "http://localhost:5000/api/register",
-        formData
-      );
-      if (response.data.success) {
+      setMessage("");
+      const result = await registerUser(formData);
+      if (result.success) {
         setIsLogin(true);
         setMessage("注册成功，您可以登录了");
       } else {
-        setMessage(response.data.error);
+        setMessage(result.error);
       }
     } catch (error) {
+      console.error("Registration error:", error);
       setMessage("注册失败，请重试");
     }
   };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+        <Typography variant="h6" sx={{ ml: 2 }}>连接服务器中...</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box

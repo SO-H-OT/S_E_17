@@ -9,13 +9,30 @@ from werkzeug.utils import secure_filename
 import time
 from functools import wraps
 from sklearn.linear_model import LinearRegression  # 修改导入语句
+import logging # 新增导入
+import socket
+import subprocess
+import re
+import datetime
+from pymysql.cursors import DictCursor
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {
-    "origins": ["http://localhost:3000"],  # 允许的前端地址
-    "methods": ["GET", "POST", "DELETE", "PUT", "OPTIONS"],  # 允许的 HTTP 方法
-    "allow_headers": ["Content-Type", "Authorization"]  # 允许的请求头
+    "origins": ["http://localhost:3000", "http://10.130.126.249:3000", "*"],  # 添加通配符允许所有来源
+    "methods": ["GET", "POST", "DELETE", "PUT", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]
 }})
+
+# 配置基本日志
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
+@app.before_request
+def log_request_info():
+    app.logger.debug('Headers: %s', request.headers)
+    app.logger.debug('Body: %s', request.get_data())
+    app.logger.debug('Origin: %s', request.origin)
+    app.logger.debug('Path: %s', request.path)
+    app.logger.debug('Method: %s', request.method)
 
 # 配置允许的文件上传类型
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
@@ -372,6 +389,10 @@ def get_video(filename):
 
 @app.route('/api/register', methods=['POST'])
 def register():
+    app.logger.debug(f"--- Entering /api/register ---") # 标记进入特定路由
+    app.logger.debug(f"Register request headers: {request.headers}")
+    app.logger.debug(f"Register request origin: {request.origin}")
+    app.logger.debug(f"Register request data: {request.data}")
     data = request.get_json()
 
     # 获取用户输入的注册信息
@@ -408,6 +429,10 @@ def register():
 
 @app.route('/api/login', methods=['POST'])
 def login():
+    app.logger.debug(f"--- Entering /api/login ---") # 标记进入特定路由
+    app.logger.debug(f"Login request headers: {request.headers}")
+    app.logger.debug(f"Login request origin: {request.origin}")
+    app.logger.debug(f"Login request data: {request.data}")
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -560,129 +585,6 @@ def get_user(username):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# 添加速率限制装饰器
-def rate_limit(max_per_minute=10):
-    min_interval = 60.0 / max_per_minute
-    last_called = [0.0]  # 使用列表存储，以便在闭包中修改
-
-    def decorator(func):
-        @wraps(func)
-        def wrapped(*args, **kwargs):
-            now = time.time()
-            elapsed = now - last_called[0]
-            if elapsed < min_interval:
-                time.sleep(min_interval - elapsed)
-            result = func(*args, **kwargs)
-            last_called[0] = time.time()
-            return result
-        return wrapped
-    return decorator
-
-# 添加重试机制
-def retry_on_ratelimit(max_retries=3, delay=1):
-    def decorator(func):
-        @wraps(func)
-        def wrapped(*args, **kwargs):
-            retries = 0
-            while retries < max_retries:
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if 'rate_limit' in str(e).lower():
-                        retries += 1
-                        if retries == max_retries:
-                            raise
-                        time.sleep(delay * (2 ** (retries - 1)))  # 指数退避
-                    else:
-                        raise
-        return wrapped
-    return decorator
-
-@app.route('/api/identify-marine-life', methods=['POST'])
-@rate_limit(max_per_minute=10)  # 限制每分钟最多10个请求
-@retry_on_ratelimit(max_retries=3, delay=1)
-def identify_marine_life():
-    if 'file' not in request.files:
-        return jsonify({"success": False, "error": "未找到文件"}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"success": False, "error": "未选择文件"}), 400
-
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join('uploads', filename)
-        
-        os.makedirs('uploads', exist_ok=True)
-        file.save(filepath)
-
-        try:
-            api_key = "sk-c0oTwzXO874NWG0Ud0nh1SbRKjdhbfNSsCTa98RxyIHpUbzU"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            # 读取图片文件并转换为base64
-            with open(filepath, 'rb') as image_file:
-                import base64
-                image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
-            
-            # 修改后的请求格式
-            payload = {
-                "model": "moonshot-v1-32k",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "请识别这张图片中的海洋生物种类，只需回复生物的名称。"
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{image_base64}"
-                                }
-                            }
-                        ]
-                    }
-                ]
-            }
-
-            # 发送请求到API端点
-            response = requests.post(
-                "https://api.moonshot.cn/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                species = result.get('choices', [{}])[0].get('message', {}).get('content', '未知生物')
-                return jsonify({"success": True, "data": {"species": species}})
-            elif 'rate_limit' in response.text.lower():
-                return jsonify({
-                    "success": False,
-                    "error": "服务器繁忙，请稍后再试",
-                    "retry_after": "60"
-                }), 429
-            else:
-                return jsonify({
-                    "success": False,
-                    "error": "识别失败，请重试",
-                    "details": response.text
-                }), response.status_code
-                
-        except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
-        finally:
-            if os.path.exists(filepath):
-                os.remove(filepath)
-    else:
-        return jsonify({"success": False, "error": "不支持的文件格式"}), 400
-
 def load_data(file_path):
     data = []
     with open(file_path, 'r') as f:
@@ -761,5 +663,451 @@ def predict_length():
             "error": str(e)
         }), 500
 
+def get_status(value, indicator):
+    if value is None:
+        return 'unknown'
+    
+    if indicator == 'dissolved_oxygen':
+        return 'good' if value >= 5 else 'warning' if value >= 3 else 'danger'
+    elif indicator == 'ammonia_nitrogen':
+        return 'good' if value <= 0.5 else 'warning' if value <= 1.0 else 'danger'
+    elif indicator == 'ph':
+        return 'good' if 6.5 <= value <= 8.5 else 'warning' if 6.0 <= value <= 9.0 else 'danger'
+    elif indicator == 'total_phosphorus':
+        return 'good' if value <= 0.1 else 'warning' if value <= 0.2 else 'danger'
+    elif indicator == 'temperature':
+        return 'good' if value <= 30 else 'warning' if value <= 35 else 'danger'
+    else:
+        return 'unknown'
+
+@app.route('/api/water-quality/current', methods=['GET'])
+def get_current_status():
+    try:
+        year = request.args.get('year', '2025')
+        month = request.args.get('month', '05')
+        province = request.args.get('province')
+        basin = request.args.get('basin')
+        section_name = request.args.get('section_name')
+
+        table_name = f"{year}-{month}"
+
+        # 构造SQL语句
+        sql = f"""
+            SELECT dissolved_oxygen, ammonia_nitrogen, pH, total_phosphorus, water_temperature
+            FROM `{table_name}`
+        """
+        conditions = []
+
+        if province:
+            conditions.append(f"province = %s")
+        if basin:
+            conditions.append(f"basin = %s")
+        if section_name:
+            conditions.append(f"section_name = %s")
+        
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY monitor_time DESC LIMIT 1"
+        
+
+        # 构建参数列表
+        params = []
+        if province:
+            params.append(province)
+        if basin:
+            params.append(basin)
+            
+        if section_name:
+            params.append(section_name)
+
+        # 查询数据库
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return jsonify({"success": False, "error": "No data found"}), 404
+
+        result = {
+            "dissolved_oxygen": {
+                "value": row['dissolved_oxygen'],
+                "status": get_status(row['dissolved_oxygen'], 'dissolved_oxygen'),
+                "unit": "mg/L"
+            },
+            "ammonia_nitrogen": {
+                "value": row['ammonia_nitrogen'],
+                "status": get_status(row['ammonia_nitrogen'], 'ammonia_nitrogen'),
+                "unit": "mg/L"
+            },
+            "ph": {
+                "value": row['pH'],
+                "status": get_status(row['pH'], 'ph'),
+                "unit": ""
+            },
+            "total_phosphorus": {
+                "value": row['total_phosphorus'],
+                "status": get_status(row['total_phosphorus'], 'total_phosphorus'),
+                "unit": "mg/L"
+            },
+            "temperature": {
+                "value": row['water_temperature'],
+                "status": get_status(row['water_temperature'], 'temperature'),
+                "unit": "°C"
+            }
+        }
+
+        return jsonify({"success": True, "data": result})
+
+    except Exception as e:
+        app.logger.error(f"Error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    
+@app.route('/api/water-quality/province-basin-sectionname-list', methods=['GET'])
+def get_province_basin_sectionname_list():
+    try:
+        # 获取请求参数（默认为 2025 年和 05 月）
+        year = request.args.get('year', '2025')
+        month = request.args.get('month', '05')
+
+        # 构造表名
+        table_name = f"{year}-{month}"
+
+        # 构造查询语句
+        sql = f"""
+            SELECT DISTINCT province, basin,section_name
+            FROM `{table_name}`
+            ORDER BY province, basin,section_name
+        """
+        app.logger.info(f"Executing SQL: {sql}")  # 打印 SQL 查询日志
+          
+        # 连接数据库并执行查询
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+        conn.close()
+        app.logger.info(f"Query result: {rows}")  # 打印查询结果
+        
+        if not rows:
+            app.logger.error("No data found")
+            return jsonify({"success": False, "error": "No data found"}), 404
+
+        # 构建返回结果
+        result = [{"province": row["province"], "basin": row["basin"],"section_name":row["section_name"]} for row in rows]  # 使用字段名访问数据
+        return jsonify({"success": True, "data": result})
+
+    except Exception as e:
+        app.logger.error(f"Error during query execution: {str(e)}")
+        app.logger.error(f"Query result: {rows}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/water-quality/province-basin-list', methods=['GET'])
+def get_province_basin_list():
+    try:
+        # 获取请求参数（默认为 2025 年和 05 月）
+        year = request.args.get('year', '2025')
+        month = request.args.get('month', '05')
+
+        # 构造表名
+        table_name = f"{year}-{month}"
+
+        # 构造查询语句
+        sql = f"""
+            SELECT DISTINCT province, basin
+            FROM `{table_name}`
+            ORDER BY province, basin
+        """
+        app.logger.info(f"Executing SQL: {sql}")  # 打印 SQL 查询日志
+          
+        # 连接数据库并执行查询
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+        conn.close()
+        app.logger.info(f"Query result: {rows}")  # 打印查询结果
+        
+        if not rows:
+            app.logger.error("No data found")
+            return jsonify({"success": False, "error": "No data found"}), 404
+
+        # 构建返回结果
+        result = [{"province": row["province"], "basin": row["basin"]} for row in rows]  # 使用字段名访问数据
+        return jsonify({"success": True, "data": result})
+
+    except Exception as e:
+        app.logger.error(f"Error during query execution: {str(e)}")
+        app.logger.error(f"Query result: {rows}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/water-quality/current_data', methods=['GET'])
+def get_current_data():
+    try:
+        year = request.args.get('year', '2025')
+        month = request.args.get('month', '05')
+        province = request.args.get('province')
+        basin = request.args.get('basin')
+
+        table_name = f"{year}-{month}"
+
+        # 构造SQL语句
+        sql = f"""
+            SELECT dissolved_oxygen, ammonia_nitrogen, pH, total_phosphorus, water_temperature, section_name
+            FROM `{table_name}`
+        """
+        conditions = []
+
+        if province:
+            conditions.append("province = %s")
+        if basin:
+            conditions.append("basin = %s")
+
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY monitor_time DESC"
+
+        # 构建参数列表
+        params = []
+        if province:
+            params.append(province)
+        if basin:
+            params.append(basin)
+
+        app.logger.info(f"SQL Query: {sql}")
+        app.logger.info(f"Params: {params}")
+
+        # 查询数据库
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()  # 获取所有的结果
+        conn.close()
+
+        app.logger.info(f"Query result: {rows}")
+
+        if not rows:
+            return jsonify({"success": False, "error": "No data found"}), 404
+        
+        # 将多个记录格式化为字典列表
+        results = []
+        for row in rows:
+            app.logger.info(f"Row: {row}")
+            result = {
+                "dissolved_oxygen": row['dissolved_oxygen'],
+                "ammonia_nitrogen": row['ammonia_nitrogen'],
+                "ph": row['pH'],
+                "total_phosphorus": row['total_phosphorus'],
+                "temperature": row['water_temperature'],
+                "section_name": row['section_name']
+            }
+            results.append(result)
+
+        return jsonify({"success": True, "data": results})
+
+    except Exception as e:
+        app.logger.error(f"Error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/water-quality/category-statistics', methods=['GET'])
+def get_quality_category_statistics():
+    try:
+        year = request.args.get('year', '2025')
+        month = request.args.get('month', '05')
+        province = request.args.get('province')
+        basin = request.args.get('basin')
+
+        table_name = f"{year}-{month}"
+
+        # 构造SQL语句
+        sql = f"""
+            SELECT water_quality_category, COUNT(*) as count
+            FROM `{table_name}`
+            WHERE water_quality_category IS NOT NULL
+        """
+        conditions = []
+
+        if province:
+            conditions.append("province = %s")
+        if basin:
+            conditions.append("basin = %s")
+
+        if conditions:
+            sql += " AND " + " AND ".join(conditions)
+        sql += " GROUP BY water_quality_category"
+
+        # 构建参数列表
+        params = []
+        if province:
+            params.append(province)
+        if basin:
+            params.append(basin)
+
+        app.logger.info(f"SQL Query: {sql}")
+        app.logger.info(f"Params: {params}")
+
+        # 查询数据库
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+        conn.close()
+
+        app.logger.info(f"Query result: {rows}")
+
+        # 初始化统计字典
+        category_counts = {
+            "Ⅰ": 0,
+            "Ⅱ": 0,
+            "Ⅲ": 0,
+            "Ⅳ": 0,
+            "Ⅴ": 0,
+            "劣Ⅴ": 0
+        }
+
+        for row in rows:
+            category = row['water_quality_category']
+            count = row['count']
+            if category in category_counts:
+                category_counts[category] = count
+            else:
+                app.logger.warning(f"Unexpected category: {category}")
+
+        return jsonify({"success": True, "data": category_counts})
+
+    except Exception as e:
+        app.logger.error(f"Error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+@app.route('/api/water-quality/full_data', methods=['GET'])
+def get_full_data():
+    try:
+        year = request.args.get('year', '2025')
+        month = request.args.get('month', '05')
+        province = request.args.get('province')
+        basin = request.args.get('basin')
+
+        table_name = f"{year}-{month}"
+
+        sql = f"SELECT * FROM `{table_name}`"
+        conditions = []
+        params = []
+
+        if province:
+            conditions.append("province = %s")
+            params.append(province)
+        if basin:
+            conditions.append("basin = %s")
+            params.append(basin)
+
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+
+        sql += " ORDER BY monitor_time DESC"
+
+        app.logger.info(f"Executing SQL: {sql}")
+        app.logger.info(f"SQL Parameters: {params}")
+
+        conn = get_db_connection()
+        with conn.cursor(DictCursor) as cursor:  # ✅ 局部使用 DictCursor
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+        conn.close()
+
+        # 检查是否误把表头写进了数据表中
+        if rows and list(rows[0].keys()) == list(rows[0].values()):
+            app.logger.warning("Detected header row inside data rows. Removing the first row.")
+            rows = rows[1:]
+
+        if not rows:
+            return jsonify({"success": False, "error": "No data found"}), 404
+
+        data = []
+        for row in rows:
+            app.logger.info(f"Processing row: {row}")
+            row_data = {}
+            try:
+                for column_name, value in row.items():
+                    app.logger.info(f"Processing field: {column_name} with value: {value} ({type(value)})")
+
+                    if isinstance(value, datetime.datetime):
+                        value = value.isoformat()
+                    elif value is None:
+                        value = "N/A"
+                    elif isinstance(value, float):
+                        value = round(value, 2)
+
+                    row_data[column_name] = value
+
+                data.append(row_data)
+
+            except Exception as e:
+                app.logger.error(f"Error processing row: {row} - Error: {str(e)}")
+                continue
+
+        return jsonify({"success": True, "data": data})
+
+    except Exception as e:
+        app.logger.error(f"Error fetching full data: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# 获取本机无线局域网适配器IP地址
+def get_wlan_ip():
+    try:
+        # 使用Windows命令获取网络信息
+        result = subprocess.check_output("ipconfig", shell=True, text=True)
+        
+        # 查找WLAN适配器信息
+        wlan_section = re.search(r"无线局域网适配器 (WLAN|Wi-Fi)([\s\S]*?)(\r?\n\r?\n|\Z)", result)
+        if not wlan_section:
+            # 尝试查找英文版本的适配器名称
+            wlan_section = re.search(r"Wireless LAN adapter (WLAN|Wi-Fi)([\s\S]*?)(\r?\n\r?\n|\Z)", result)
+        
+        if wlan_section:
+            # 从WLAN部分查找IPv4地址
+            ip_match = re.search(r"IPv4 地址[\.\s]*: ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", wlan_section.group(0))
+            if not ip_match:
+                # 尝试查找英文版本
+                ip_match = re.search(r"IPv4 Address[\.\s]*: ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", wlan_section.group(0))
+            
+            if ip_match:
+                return ip_match.group(1)
+    except Exception as e:
+        app.logger.error(f"Error getting WLAN IP: {e}")
+    
+    # 如果上述方法失败，尝试使用socket获取本机IP
+    try:
+        # 创建一个临时socket连接到公网，以获取当前使用的网络接口IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception as e:
+        app.logger.error(f"Socket method failed: {e}")
+        return "127.0.0.1"  # 如果所有方法都失败，返回localhost
+
+# 存储获取到的IP地址
+SERVER_IP = get_wlan_ip()
+SERVER_PORT = 5000
+SERVER_URL = f"http://{SERVER_IP}:{SERVER_PORT}"
+
+app.logger.info(f"Server IP detected: {SERVER_IP}")
+app.logger.info(f"Server URL: {SERVER_URL}")
+
+# 添加API端点返回服务器地址信息
+@app.route('/api/server-info', methods=['GET'])
+def get_server_info():
+    return jsonify({
+        "success": True,
+        "ip": SERVER_IP,
+        "port": SERVER_PORT,
+        "url": SERVER_URL
+    })
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0', port=SERVER_PORT, debug=True)

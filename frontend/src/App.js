@@ -11,7 +11,6 @@ import EditUser from './pages/EditUsersPage';
 import BlankPage from './pages/BlankPage';
 
 
-
 function App() {
 
   const handleLogout = () => {
