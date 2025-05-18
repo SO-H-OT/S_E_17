@@ -9,14 +9,23 @@ import VideoPage from './pages/VideoPage';
 import UserListPage from './pages/UserListPage';
 import EditUser from './pages/EditUsersPage';
 import BlankPage from './pages/BlankPage';
+import UserInfoPage from './pages/UserInfoPage';
 
 
 function App() {
-
   const handleLogout = () => {
-    localStorage.clear(); 
+    localStorage.clear();
     window.location.replace('/');
   };
+
+  // 获取并解析角色信息
+  let role = null;
+  try {
+    const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+    role = userInfo?.role || null;
+  } catch (e) {
+    console.error('解析用户信息失败：', e);
+  }
 
   return (
     <Router>
@@ -30,11 +39,22 @@ function App() {
           <Button color="inherit" href="/market-online">在线市场</Button>
           <Button color="inherit" href="/weather">天气预报</Button>
           <Button color="inherit" href="/video">视频播放</Button>
-          <Button color="inherit" href="/user">用户列表</Button>
+
+          {/* 仅 admin 可见 */}
+          {role === 'admin' && (
+            <Button color="inherit" href="/user">用户列表</Button>
+          )}
+
+          {/* admin 和 user 都可见 */}
+          {(role === 'admin' || role === 'user') && (
+            <Button color="inherit" href="/userinfo">个人信息</Button>
+          )}
+
           <Button color="inherit" href="/blank">大模型交互</Button>
           <Button color="inherit" onClick={handleLogout}>退出登录</Button>
         </Toolbar>
       </AppBar>
+
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/second" element={<SecondPage />} />
@@ -44,6 +64,7 @@ function App() {
         <Route path="/user" element={<UserListPage />} />
         <Route path="/edit-user/:username" element={<EditUser />} />
         <Route path="/blank" element={<BlankPage />} />
+        <Route path="/userinfo" element={<UserInfoPage />} />
       </Routes>
     </Router>
   );
