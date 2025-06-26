@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Container, Table, TableBody, TableCell, TableContainer, 
+   Container, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, Paper, Typography, Box, Card, 
-  CardContent, Grid ,Select,MenuItem,FormControl, InputLabel
+  CardContent, Grid, Select, MenuItem, FormControl, InputLabel,
+  Alert, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, Fab
 } from '@mui/material';
+import SettingsIcon from '@mui/icons-material/Settings';
+import SaveIcon from '@mui/icons-material/Save';
+import RestoreIcon from '@mui/icons-material/Restore';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer 
@@ -161,6 +166,264 @@ function HomePage() {
   const [newSelectedProvinceBasin, setNewSelectedProvinceBasin] = useState('');
 
   const [newFullWaterQualityData, setNewFullWaterQualityData] = useState([]);
+
+  const [alertMessages, setAlertMessages] = useState([]);
+  const [abnormalRows, setAbnormalRows] = useState(new Set());
+  const [showAbnormalOnly, setShowAbnormalOnly] = useState(false);
+  const [alertDialogOpen, setAlertDialogOpen] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState(null);
+
+  // 新增状态
+  const [standardsDialogOpen, setStandardsDialogOpen] = useState(false);
+  const [editableStandards, setEditableStandards] = useState({});
+  const [userRole, setUserRole] = useState(null);
+
+  // 默认水质标准（用于重置）
+  const DEFAULT_STANDARDS = {
+    water_temperature: { min: 0, max: 35, unit: "°C" },
+    pH: { min: 6.0, max: 9.0, unit: "" },
+    dissolved_oxygen: { min: 5.0, max: 15.0, unit: "mg/L" },
+    conductivity: { min: 50, max: 2000, unit: "μS/cm" },
+    turbidity: { min: 0, max: 10, unit: "NTU" },
+    permanganate_index: { min: 0, max: 6, unit: "mg/L" },
+    ammonia_nitrogen: { min: 0, max: 1.0, unit: "mg/L" },
+    total_phosphorus: { min: 0, max: 0.2, unit: "mg/L" },
+    total_nitrogen: { min: 0, max: 2.0, unit: "mg/L" },
+    chlorophyll_a: { min: 0, max: 30, unit: "mg/m³" },
+    algae_density: { min: 0, max: 1000000, unit: "cells/L" },
+  };
+
+  // 水质标准定义（现在可以动态修改）
+  const [WATER_QUALITY_STANDARDS, setWATER_QUALITY_STANDARDS] = useState(DEFAULT_STANDARDS);
+
+  // 检查数值异常
+  const checkValueStatus = useCallback((key, value) => {
+    if (
+      !WATER_QUALITY_STANDARDS[key] ||
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      return "normal";
+    }
+
+    const { min, max } = WATER_QUALITY_STANDARDS[key];
+    const numValue = parseFloat(value);
+
+    if (isNaN(numValue)) return "normal";
+
+    // 严重超标（超出范围20%以上）
+    if (numValue < min * 0.8 || numValue > max * 1.2) {
+      return "danger";
+    }
+    // 轻微超标
+    if (numValue < min || numValue > max) {
+      return "warning";
+    }
+
+    return "normal";
+  }, [WATER_QUALITY_STANDARDS]);
+
+  // 获取字段中文名称
+  const getFieldName = useCallback((key) => {
+    const fieldNames = {
+      water_temperature: '水温',
+      pH: 'pH值',
+      dissolved_oxygen: '溶解氧',
+      conductivity: '电导率',
+      turbidity: '浑浊度',
+      permanganate_index: '高锰酸盐指数',
+      ammonia_nitrogen: '氨氮',
+      total_phosphorus: '总磷',
+      total_nitrogen: '总氮',
+      chlorophyll_a: '叶绿素a',
+      algae_density: '藻类密度'
+    };
+    return fieldNames[key] || key;
+  }, []);
+
+  // 检查表格数据异常
+  const checkTableDataAnomalies = useCallback((data) => {
+    const alerts = [];
+    const abnormalRowsSet = new Set();
+
+    data.forEach((item, index) => {
+      const rowAlerts = [];
+      
+      // 检查各个数值字段
+      Object.keys(WATER_QUALITY_STANDARDS).forEach(key => {
+        const status = checkValueStatus(key, item[key]);
+        
+        if (status === 'warning' || status === 'danger') {
+          abnormalRowsSet.add(index);
+          const alertInfo = {
+            id: `${index}-${key}-${Date.now()}`,
+            rowIndex: index,
+            field: key,
+            fieldName: getFieldName(key),
+            value: item[key],
+            unit: WATER_QUALITY_STANDARDS[key].unit,
+            status: status,
+            sectionName: item.section_name,
+            monitorTime: item.monitor_time,
+            timestamp: new Date().toLocaleString(),
+            standard: WATER_QUALITY_STANDARDS[key]
+          };
+          rowAlerts.push(alertInfo);
+        }
+      });
+
+      // 检查站点状态
+      if (item.station_status && item.station_status !== '正常' && item.station_status !== 'normal') {
+        abnormalRowsSet.add(index);
+        rowAlerts.push({
+          id: `${index}-status-${Date.now()}`,
+          rowIndex: index,
+          field: 'station_status',
+          fieldName: '站点状态',
+          value: item.station_status,
+          unit: '',
+          status: 'warning',
+          sectionName: item.section_name,
+          monitorTime: item.monitor_time,
+          timestamp: new Date().toLocaleString()
+        });
+      }
+
+      alerts.push(...rowAlerts);
+    });
+
+    setAbnormalRows(abnormalRowsSet);
+    setAlertMessages(prev => [...alerts, ...prev].slice(0, 100)); // 保留最新100条警报
+  }, [checkValueStatus, getFieldName, WATER_QUALITY_STANDARDS]);
+
+  // 获取用户角色
+  useEffect(() => {
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      setUserRole(userInfo?.role || null);
+    } catch (e) {
+      console.error('解析用户信息失败：', e);
+      setUserRole(null);
+    }
+  }, []);
+
+  // 从localStorage加载自定义标准
+  useEffect(() => {
+    try {
+      const savedStandards = localStorage.getItem('waterQualityStandards');
+      if (savedStandards) {
+        const parsed = JSON.parse(savedStandards);
+        setWATER_QUALITY_STANDARDS(parsed);
+      }
+    } catch (e) {
+      console.error('加载自定义标准失败：', e);
+    }
+  }, []);
+
+  // 获取字段中文名称（扩展版本）
+  const getFieldDisplayName = (key) => {
+    const displayNames = {
+      water_temperature: '水温',
+      pH: 'pH值',
+      dissolved_oxygen: '溶解氧',
+      conductivity: '电导率',
+      turbidity: '浑浊度',
+      permanganate_index: '高锰酸盐指数',
+      ammonia_nitrogen: '氨氮',
+      total_phosphorus: '总磷',
+      total_nitrogen: '总氮',
+      chlorophyll_a: '叶绿素a',
+      algae_density: '藻类密度'
+    };
+    return displayNames[key] || key;
+  };
+
+  // 打开标准设置对话框
+  const openStandardsDialog = () => {
+    setEditableStandards(JSON.parse(JSON.stringify(WATER_QUALITY_STANDARDS)));
+    setStandardsDialogOpen(true);
+  };
+
+  // 处理标准值变更
+  const handleStandardChange = (key, field, value) => {
+    const numValue = parseFloat(value);
+    if (!isNaN(numValue) || value === '') {
+      setEditableStandards(prev => ({
+        ...prev,
+        [key]: {
+          ...prev[key],
+          [field]: value === '' ? '' : numValue
+        }
+      }));
+    }
+  };
+
+  // 重置为默认标准
+  const resetToDefault = () => {
+    setEditableStandards(JSON.parse(JSON.stringify(DEFAULT_STANDARDS)));
+  };
+
+  // 保存标准设置
+  const saveStandards = async () => {
+    try {
+      // 验证数据格式
+      const isValid = Object.values(editableStandards).every(standard => 
+        standard.min !== undefined && 
+        standard.max !== undefined && 
+        !isNaN(standard.min) && 
+        !isNaN(standard.max) &&
+        standard.min >= 0 &&
+        standard.max >= standard.min
+      );
+
+      if (!isValid) {
+        alert('请检查输入的数值，确保最小值和最大值都是有效数字，且最小值不大于最大值');
+        return;
+      }
+
+      // 保存到localStorage
+      localStorage.setItem('waterQualityStandards', JSON.stringify(editableStandards));
+      
+      // 更新当前标准
+      setWATER_QUALITY_STANDARDS(editableStandards);
+      
+      setStandardsDialogOpen(false);
+      
+      // 重新检查当前数据的异常状态
+      if (newFullWaterQualityData.length > 0) {
+        checkTableDataAnomalies(newFullWaterQualityData);
+      }
+
+      alert('水质标准已保存成功！');
+    } catch (error) {
+      console.error('保存标准失败：', error);
+      alert('保存失败，请重试');
+    }
+  };
+
+  // 监控表格数据变化
+  useEffect(() => {
+    if (newFullWaterQualityData && newFullWaterQualityData.length > 0) {
+      checkTableDataAnomalies(newFullWaterQualityData);
+    }
+  }, [newFullWaterQualityData, checkTableDataAnomalies]);
+
+  // 过滤显示的数据
+  const filteredData = showAbnormalOnly 
+    ? newFullWaterQualityData.filter((_, index) => abnormalRows.has(index))
+    : newFullWaterQualityData;
+
+  // 清除所有警报
+  const clearAllAlerts = () => {
+    setAlertMessages([]);
+  };
+
+  // 查看警报详情
+  const viewAlertDetails = (alert) => {
+    setSelectedAlert(alert);
+    setAlertDialogOpen(true);
+  };
 
   // 获取区域列表
   useEffect(() => {
@@ -339,26 +602,103 @@ useEffect(() => {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>
-      <Typography variant="h4" gutterBottom>水质监测系统</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography variant="h4" gutterBottom>水质监测系统</Typography>
+        
+        {/* 管理员标准设置按钮 */}
+        {userRole === 'admin' && (
+          <Button
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={openStandardsDialog}
+            sx={{ ml: 2 }}
+          >
+            设置水质标准
+          </Button>
+        )}
+      </Box>
 
-     <Box sx={{ marginTop: 4, marginBottom: 4 }}>
-      {/* 这里是你的卡片或其他内容 */}
-    </Box>
-    <Typography variant="h5" gutterBottom>最近水质展示</Typography>
-    <FormControl fullWidth sx={{ mb: 3 }}>
-      <InputLabel>选择区域</InputLabel>
-      <Select
-        value={selectedLocation}
-        label="选择区域"
-        onChange={(e) => setSelectedLocation(e.target.value)}
-      >
-        {locations.map((loc, index) => (
-          <MenuItem key={index} value={`${loc.province}|${loc.basin}|${loc.section_name}`}>
-            {loc.province} - {loc.basin} - {loc.section_name}
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
+      {/* 管理员浮动设置按钮 */}
+      {userRole === 'admin' && (
+        <Fab
+          color="primary"
+          aria-label="设置水质标准"
+          onClick={openStandardsDialog}
+          sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}
+        >
+          <SettingsIcon />
+        </Fab>
+      )}
+
+      {/* 异常警报区域 */}
+      {alertMessages.length > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" color="error">
+              异常警报 ({alertMessages.length})
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={clearAllAlerts}
+            >
+              清除所有警报
+            </Button>
+          </Box>
+
+          <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
+            {alertMessages.slice(0, 10).map((alert) => (
+              <Alert
+                key={alert.id}
+                severity={alert.status === 'danger' ? 'error' : 'warning'}
+                sx={{ mb: 1, cursor: 'pointer' }}
+                onClick={() => viewAlertDetails(alert)}
+                action={
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAlertMessages(prev => prev.filter(a => a.id !== alert.id));
+                    }}
+                  >
+                    删除
+                  </Button>
+                }
+              >
+                <Box>
+                  <Typography variant="body2">
+                    {alert.sectionName} - {alert.fieldName}: {alert.value}{alert.unit}
+                    {alert.status === 'danger' ? ' (严重超标)' : ' (轻微超标)'}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(alert.monitorTime).toLocaleString()}
+                  </Typography>
+                </Box>
+              </Alert>
+            ))}
+          </Box>
+        </Box>
+      )}
+
+      <Box sx={{ marginTop: 4, marginBottom: 4 }}>
+        {/* 这里是你的卡片或其他内容 */}
+      </Box>
+      <Typography variant="h5" gutterBottom>最近水质展示</Typography>
+      <FormControl fullWidth sx={{ mb: 3 }}>
+        <InputLabel>选择区域</InputLabel>
+        <Select
+          value={selectedLocation}
+          label="选择区域"
+          onChange={(e) => setSelectedLocation(e.target.value)}
+        >
+          {locations.map((loc, index) => (
+            <MenuItem key={index} value={`${loc.province}|${loc.basin}|${loc.section_name}`}>
+              {loc.province} - {loc.basin} - {loc.section_name}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
 
       {/* 当前水质状态卡片 */}
         <Box sx={{ mb: 2 }}>
@@ -523,6 +863,133 @@ useEffect(() => {
        <Box sx={{ marginTop: 18, marginBottom: 18 }}>
           {/* 这里是你的卡片或其他内容 */}
         </Box>
+
+      {/* 水质标准设置对话框 */}
+      <Dialog 
+        open={standardsDialogOpen} 
+        onClose={() => setStandardsDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: { minHeight: '80vh' }
+        }}
+      >
+        <DialogTitle sx={{ 
+          backgroundColor: 'primary.main', 
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1
+        }}>
+          <SettingsIcon />
+          水质标准设置
+          <Chip 
+            label="管理员权限" 
+            size="small" 
+            sx={{ ml: 'auto', backgroundColor: 'warning.main', color: 'white' }}
+          />
+        </DialogTitle>
+        
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            设置各项水质指标的正常范围。超出范围的数据将被标记为异常。
+          </Typography>
+
+          <Grid container spacing={3}>
+            {Object.entries(editableStandards).map(([key, standard]) => (
+              <Grid item xs={12} sm={6} md={4} key={key}>
+                <Card variant="outlined" sx={{ p: 2, height: '100%' }}>
+                  <Typography variant="h6" gutterBottom color="primary">
+                    {getFieldDisplayName(key)}
+                  </Typography>
+                  
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <TextField
+                      label="最小值"
+                      type="number"
+                      size="small"
+                      value={standard.min}
+                      onChange={(e) => handleStandardChange(key, 'min', e.target.value)}
+                      InputProps={{
+                        endAdornment: standard.unit && (
+                          <Typography variant="caption" color="text.secondary">
+                            {standard.unit}
+                          </Typography>
+                        )
+                      }}
+                      inputProps={{ 
+                        step: key === 'pH' ? 0.1 : 1,
+                        min: 0
+                      }}
+                    />
+                    
+                    <TextField
+                      label="最大值"
+                      type="number"
+                      size="small"
+                      value={standard.max}
+                      onChange={(e) => handleStandardChange(key, 'max', e.target.value)}
+                      InputProps={{
+                        endAdornment: standard.unit && (
+                          <Typography variant="caption" color="text.secondary">
+                            {standard.unit}
+                          </Typography>
+                        )
+                      }}
+                      inputProps={{ 
+                        step: key === 'pH' ? 0.1 : 1,
+                        min: standard.min || 0
+                      }}
+                    />
+                    
+                    <Typography variant="caption" color="text.secondary">
+                      范围: {standard.min} - {standard.max} {standard.unit}
+                    </Typography>
+                  </Box>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Box sx={{ mt: 3, p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              <strong>说明：</strong>
+              <br />• 轻微超标：超出标准范围但在范围的20%以内
+              <br />• 严重超标：超出标准范围20%以上
+              <br />• 修改后的标准将立即应用于当前数据的异常检测
+            </Typography>
+          </Box>
+        </DialogContent>
+        
+        <DialogActions sx={{ p: 3, gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<RestoreIcon />}
+            onClick={resetToDefault}
+            color="warning"
+          >
+            恢复默认
+          </Button>
+          
+          <Box sx={{ flexGrow: 1 }} />
+          
+          <Button
+            onClick={() => setStandardsDialogOpen(false)}
+            color="inherit"
+          >
+            取消
+          </Button>
+          
+          <Button
+            variant="contained"
+            startIcon={<SaveIcon />}
+            onClick={saveStandards}
+            color="primary"
+          >
+            保存设置
+          </Button>
+        </DialogActions>
+      </Dialog>
 
     </Container>
   );

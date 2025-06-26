@@ -1,11 +1,12 @@
 import pandas as pd
 import numpy as np
-from flask import Flask, jsonify, request, send_file, safe_join, Response, send_from_directory
+from flask import Flask, jsonify, request, send_file, Response, send_from_directory
 from flask_cors import CORS
 import requests
 import os
 import pymysql
 from werkzeug.utils import secure_filename
+from werkzeug.security import safe_join
 import time
 from functools import wraps
 from sklearn.linear_model import LinearRegression  # 修改导入语句
@@ -44,7 +45,7 @@ def allowed_file(filename):
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
-    'password': '123456',  # 请更改为你的数据库密码
+    'password': '114514',  # 请更改为你的数据库密码
     'db': 'oceanmonitor',
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
@@ -425,6 +426,7 @@ def register():
         conn.close()
         return jsonify({"success": True, "message": "注册成功"}), 201
     except Exception as e:
+        app.logger.error(f"Error during registration: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/login', methods=['POST'])
@@ -468,6 +470,7 @@ def login():
             }
         }), 200
     except Exception as e:
+        app.logger.error(f"Error during registration: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/users', methods=['GET'])
