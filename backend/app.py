@@ -45,7 +45,7 @@ def allowed_file(filename):
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
-    'password': '114514',  # 请更改为你的数据库密码
+    'password': 'Fsj690803!@',  # 请更改为你的数据库密码
     'db': 'oceanmonitor',
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
@@ -1111,6 +1111,224 @@ def get_server_info():
         "port": SERVER_PORT,
         "url": SERVER_URL
     })
+
+@app.route('/api/geocode/city-code', methods=['GET'])
+def get_city_code():
+    try:
+        # 调试日志：打印原始参数
+        app.logger.debug(f"接收到的原始参数: {request.args}")
+        
+        # 参数获取与验证
+        key = request.args.get('key', '').strip()
+        address = request.args.get('address', '').strip()
+        
+        if not key or not address:
+            app.logger.error(f"参数验证失败: key={key}, address={address}")
+            return jsonify({
+                "success": False,
+                "error": "参数key和address必须提供",
+                "received": request.args.to_dict()
+            }), 400
+
+        # 调用高德API
+        amap_url = "https://restapi.amap.com/v3/geocode/geo"
+        try:
+            response = requests.get(
+                amap_url,
+                params={'key': key, 'address': address},
+                timeout=5
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            app.logger.error(f"高德API请求失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": "地图服务请求失败",
+                "details": str(e)
+            }), 502
+
+        # 处理高德API响应
+        if data.get('status') != '1':
+            app.logger.error(f"高德API错误响应: {data}")
+            return jsonify({
+                "success": False,
+                "error": data.get('info', '地址解析服务错误'),
+                "amap_response": data
+            }), 400
+
+        if not data.get('geocodes'):
+            return jsonify({
+                "success": False,
+                "error": "未找到匹配的地址信息"
+            }), 404
+
+        # 成功响应
+        return jsonify({
+            "success": True,
+            "data": {
+                "city_code": data['geocodes'][0]['adcode'],
+                "formatted_address": data['geocodes'][0]['formatted_address']
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"未处理的异常: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": "服务器内部错误",
+            "exception": str(e)
+        }), 500
+
+@app.route('/api/weather/amap', methods=['GET'])
+def get_amap_weather():
+
+    # 参数接收与验证
+    params = {
+        'key': request.args.get('key', '').strip(),
+        'city_code': request.args.get('city_code', '').strip(),
+        'extensions': request.args.get('extensions', 'all').strip().lower()
+    }
+    
+    # 参数验证
+    if not all(params.values()):
+        missing = [k for k, v in params.items() if not v]
+        app.logger.error(f"缺少必要参数: {missing}")
+        return jsonify({
+            "success": False,
+            "error": f"缺少必要参数: {', '.join(missing)}",
+            "received": request.args.to_dict()
+        }), 400
+
+    if not params['city_code'].isdigit():
+        app.logger.error(f"无效城市编码格式: {params['city_code']}")
+        return jsonify({
+            "success": False,
+            "error": "城市编码必须为数字",
+            "received": params['city_code']
+        }), 400
+
+    if params['extensions'] not in ['base', 'all']:
+        app.logger.error(f"无效extensions参数: {params['extensions']}")
+        return jsonify({
+            "success": False,
+            "error": "extensions必须是base或all",
+            "received": params['extensions']
+        }), 400
+
+    # 构建高德API请求
+    amap_params = {
+        'key': params['key'],
+        'city': params['city_code'],
+        'extensions': params['extensions'],
+        'output': 'JSON'
+    }
+
+    try:
+        # 调用高德API
+        response = requests.get(
+            "https://restapi.amap.com/v3/weather/weatherInfo",
+            params=amap_params,
+            timeout=(3.05, 10)  # 连接超时3.05秒，读取超时10秒
+        )
+        response.raise_for_status()
+        amap_data = response.json()
+        
+        # 处理高德API响应
+        if amap_data.get('status') != '1':
+            error_info = amap_data.get('info', '未知错误')
+            app.logger.error(f"高德API错误: {error_info}")
+            return jsonify({
+                "success": False,
+                "error": f"高德接口返回错误: {error_info}",
+                "amap_response": amap_data
+            }), 502
+
+        # 数据标准化处理
+        result = {
+            "success": True,
+            "data": {
+                "report_time": amap_data.get("reportTime", ""),
+                "city_info": {
+                    "code": params['city_code'],
+                    "name": get_city_name(amap_data, params['extensions'])
+                },
+                "weather": parse_weather_data(amap_data, params['extensions'])
+            },
+            "metadata": {
+                "request_id": request.headers.get('X-Request-ID'),
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+        }
+
+        app.logger.info(f"成功获取天气数据: {params['city_code']}")
+        return jsonify(result)
+
+    except requests.exceptions.Timeout:
+        app.logger.error("请求高德API超时")
+        return jsonify({
+            "success": False,
+            "error": "连接天气服务超时"
+        }), 504
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"高德API请求异常: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": "天气服务不可用",
+            "details": str(e)
+        }), 502
+    except Exception as e:
+        app.logger.error(f"未处理异常: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": "服务器处理请求时出错",
+            "exception": str(e)
+        }), 500
+
+
+def get_city_name(amap_data, extensions):
+    """获取城市名称"""
+    if extensions == 'base':
+        return amap_data.get("lives", [{}])[0].get("city", "未知城市")
+    return amap_data.get("forecasts", [{}])[0].get("city", "未知城市")
+
+
+def parse_weather_data(amap_data, extensions):
+    """解析天气数据"""
+    if extensions == 'base':
+        live = amap_data.get("lives", [{}])[0]
+        return {
+            "type": "live",
+            "weather": live.get("weather"),
+            "temperature": live.get("temperature"),
+            "wind": {
+                "direction": live.get("winddirection"),
+                "power": live.get("windpower")
+            },
+            "humidity": live.get("humidity")
+        }
+    
+    forecast = amap_data.get("forecasts", [{}])[0]
+    return {
+        "type": "forecast",
+        "casts": [
+            {
+                "date": cast.get("date"),
+                "day": {
+                    "weather": cast.get("dayweather"),
+                    "temp": cast.get("daytemp"),
+                    "wind": cast.get("daywind"),
+                    "power": cast.get("daypower")
+                },
+                "night": {
+                    "weather": cast.get("nightweather"),
+                    "temp": cast.get("nighttemp"),
+                    "wind": cast.get("nightwind"),
+                    "power": cast.get("nightpower")
+                }
+            } for cast in forecast.get("casts", [])
+        ]
+    }
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=SERVER_PORT, debug=True)
