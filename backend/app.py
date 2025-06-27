@@ -770,28 +770,23 @@ def get_current_status():
 @app.route('/api/water-quality/province-basin-sectionname-list', methods=['GET'])
 def get_province_basin_sectionname_list():
     try:
-        # 获取请求参数（默认为 2025 年和 05 月）
         year = request.args.get('year', '2025')
         month = request.args.get('month', '05')
-
-        # 构造表名
         table_name = f"{year}-{month}"
 
-        # 构造查询语句
         sql = f"""
             SELECT DISTINCT province, basin,section_name
             FROM `{table_name}`
             ORDER BY province, basin,section_name
         """
-        app.logger.info(f"Executing SQL: {sql}")  # 打印 SQL 查询日志
+        app.logger.info(f"Executing SQL: {sql}") 
           
-        # 连接数据库并执行查询
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute(sql)
             rows = cursor.fetchall()
         conn.close()
-        app.logger.info(f"Query result: {rows}")  # 打印查询结果
+        app.logger.info(f"Query result: {rows}")  
         
         if not rows:
             app.logger.error("No data found")
@@ -810,14 +805,9 @@ def get_province_basin_sectionname_list():
 @app.route('/api/water-quality/province-basin-list', methods=['GET'])
 def get_province_basin_list():
     try:
-        # 获取请求参数（默认为 2025 年和 05 月）
         year = request.args.get('year', '2025')
         month = request.args.get('month', '05')
-
-        # 构造表名
         table_name = f"{year}-{month}"
-
-        # 构造查询语句
         sql = f"""
             SELECT DISTINCT province, basin
             FROM `{table_name}`
