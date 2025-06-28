@@ -16,6 +16,20 @@ import re
 import datetime
 from pymysql.cursors import DictCursor
 
+# 新增导入：PDF生成和图表绘制
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # 使用非交互式后端
+import seaborn as sns
+import io
+import base64
+
 app = Flask(__name__)
 CORS(app, resources={r"/*": {
     "origins": ["http://localhost:3000", "http://10.130.126.249:3000", "*"],  # 添加通配符允许所有来源
@@ -90,6 +104,13 @@ def home():
                 "/api/export/fish-data - 导出鱼类数据 (GET)", 
                 "/api/export/users - 导出用户数据 (GET)",
                 "/api/export/comprehensive-report - 导出综合报告 (GET)"
+            ],
+            "数据上传": [
+                "/api/upload/data - 上传单条或多条数据 (POST)",
+                "/api/upload/csv - 批量上传CSV数据 (POST)"
+            ],
+            "数据查看": [
+                "/api/recent-data - 获取最近上传的数据 (GET)"
             ]
         }
     })
@@ -1279,19 +1300,30 @@ def export_users():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 @app.route('/api/export/comprehensive-report', methods=['GET'])
 def export_comprehensive_report():
     """导出综合分析报告"""
     try:
+        print("=== 综合报告导出请求开始 ===")
         year = request.args.get('year', '2020')
         month = request.args.get('month', '05')
-        export_format = request.args.get('format', 'excel').lower()
+        export_format = request.args.get('format', 'pdf').lower()
+        
+        print(f"请求参数: year={year}, month={month}, format={export_format}")
         
         # 构建表名
         table_name = f"{year}-{month}"
+        print(f"数据表名: {table_name}")
         
-        # 创建Excel工作簿（多个工作表）
-        if export_format == 'excel' or export_format == 'xlsx':
+        if export_format == 'pdf':
+            import os
+            # 使用绝对路径确保文件能正确保存
+            filename = os.path.join(os.getcwd(), f"comprehensive_report_{year}_{month}.pdf")
+            print(f"PDF文件路径: {filename}")
+            return generate_pdf_report(year, month, table_name, filename)
+        
+        elif export_format == 'excel' or export_format == 'xlsx':
             filename = f"comprehensive_report_{year}_{month}.xlsx"
             
             with pd.ExcelWriter(filename, engine='openpyxl') as writer:
@@ -1341,10 +1373,854 @@ def export_comprehensive_report():
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
         else:
-            return jsonify({"success": False, "error": "综合报告只支持Excel格式"}), 400
+            return jsonify({"success": False, "error": "支持的格式：pdf, excel"}), 400
             
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        import traceback
+        error_msg = f"综合报告导出失败: {str(e)}"
+        print("=== 综合报告导出错误 ===")
+        print(f"错误信息: {error_msg}")
+        print(f"错误类型: {type(e).__name__}")
+        print(f"错误堆栈:\n{traceback.format_exc()}")
+        print("========================")
+        return jsonify({"success": False, "error": error_msg}), 500
+
+def generate_pdf_report(year, month, table_name, filename):
+    """生成包含实际数据和图表的PDF格式综合报告"""
+    try:
+        print(f"开始生成PDF报告: {filename}")
+        
+        # 导入所需库
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('Agg')  # 使用非交互式后端
+        import seaborn as sns
+        
+        # 设置中文字体支持
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+        
+        print("开始获取数据...")
+        
+        # 1. 获取水质数据
+        water_data = None
+        water_stats = {}
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT * FROM `{table_name}` LIMIT 1000")
+                water_data = cursor.fetchall()
+            conn.close()
+            
+            if water_data:
+                water_df = pd.DataFrame(water_data)
+                print(f"获取到 {len(water_data)} 条水质数据")
+                
+                # 计算统计信息
+                if 'water_quality_grade' in water_df.columns:
+                    water_stats['grade_distribution'] = water_df['water_quality_grade'].value_counts().to_dict()
+                if 'province' in water_df.columns:
+                    water_stats['province_count'] = len(water_df['province'].unique())
+                if 'basin' in water_df.columns:
+                    water_stats['basin_count'] = len(water_df['basin'].unique())
+                
+                water_stats['total_records'] = len(water_data)
+        except Exception as e:
+            print(f"获取水质数据失败: {e}")
+            water_data = []
+        
+        # 2. 获取鱼类数据
+        fish_data = None
+        fish_stats = {}
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT * FROM fishes LIMIT 500")
+                fish_data = cursor.fetchall()
+            conn.close()
+            
+            if fish_data:
+                fish_df = pd.DataFrame(fish_data)
+                print(f"获取到 {len(fish_data)} 条鱼类数据")
+                
+                # 计算统计信息
+                if 'species' in fish_df.columns:
+                    fish_stats['species_count'] = len(fish_df['species'].unique())
+                    fish_stats['species_distribution'] = fish_df['species'].value_counts().head(5).to_dict()
+                if 'weight' in fish_df.columns:
+                    fish_stats['avg_weight'] = round(fish_df['weight'].mean(), 2)
+                    fish_stats['max_weight'] = round(fish_df['weight'].max(), 2)
+                
+                fish_stats['total_records'] = len(fish_data)
+        except Exception as e:
+            print(f"获取鱼类数据失败: {e}")
+            fish_data = []
+        
+        print("数据获取完成，开始生成图表...")
+        
+        # 3. 生成图表
+        chart_files = []
+        
+        # 生成水质等级分布图
+        if water_data and 'grade_distribution' in water_stats:
+            try:
+                plt.figure(figsize=(8, 6))
+                grades = list(water_stats['grade_distribution'].keys())
+                counts = list(water_stats['grade_distribution'].values())
+                
+                plt.pie(counts, labels=grades, autopct='%1.1f%%', startangle=90)
+                plt.title('水质等级分布', fontsize=14, pad=20)
+                
+                chart_filename = f"water_quality_chart_{year}_{month}.png"
+                plt.savefig(chart_filename, dpi=150, bbox_inches='tight')
+                plt.close()
+                chart_files.append(chart_filename)
+                print("水质分布图生成成功")
+            except Exception as e:
+                print(f"生成水质图表失败: {e}")
+        
+        # 生成鱼类种类分布图
+        if fish_data and 'species_distribution' in fish_stats:
+            try:
+                plt.figure(figsize=(10, 6))
+                species = list(fish_stats['species_distribution'].keys())
+                counts = list(fish_stats['species_distribution'].values())
+                
+                plt.bar(range(len(species)), counts)
+                plt.xlabel('鱼类种类')
+                plt.ylabel('数量')
+                plt.title('主要鱼类种类分布 (前5名)', fontsize=14, pad=20)
+                plt.xticks(range(len(species)), species, rotation=45)
+                
+                chart_filename = f"fish_species_chart_{year}_{month}.png"
+                plt.savefig(chart_filename, dpi=150, bbox_inches='tight')
+                plt.close()
+                chart_files.append(chart_filename)
+                print("鱼类分布图生成成功")
+            except Exception as e:
+                print(f"生成鱼类图表失败: {e}")
+        
+        print("图表生成完成，开始创建PDF...")
+        
+        # 4. 创建PDF
+        c = canvas.Canvas(filename, pagesize=A4)
+        width, height = A4
+        
+        # 尝试注册中文字体
+        chinese_font_bold = "Helvetica-Bold"
+        chinese_font_normal = "Helvetica"
+        use_chinese = False
+        
+        try:
+            import platform
+            if platform.system() == "Windows":
+                try:
+                    pdfmetrics.registerFont(TTFont('SimSun', 'C:/Windows/Fonts/simsun.ttc'))
+                    pdfmetrics.registerFont(TTFont('SimHei', 'C:/Windows/Fonts/simhei.ttf'))
+                    chinese_font_normal = 'SimSun'
+                    chinese_font_bold = 'SimHei'
+                    use_chinese = True
+                    print("成功注册Windows中文字体")
+                except:
+                    print("Windows中文字体注册失败，使用英文字体")
+        except Exception as font_error:
+            print(f"字体注册失败: {font_error}")
+        
+        # 标题
+        c.setFont(chinese_font_bold, 20)
+        if use_chinese:
+            c.drawCentredString(width/2, height - 50, "智慧海洋牧场综合分析报告")
+            c.setFont(chinese_font_normal, 12)
+            c.drawCentredString(width/2, height - 80, f"报告时间：{year}年{month}月")
+        else:
+            c.drawCentredString(width/2, height - 50, "Ocean Ranch Analysis Report")
+            c.setFont(chinese_font_normal, 12) 
+            c.drawCentredString(width/2, height - 80, f"Period: {year}-{month}")
+        
+        y_position = height - 120
+        
+        # 1. 系统概览
+        c.setFont(chinese_font_bold, 14)
+        if use_chinese:
+            c.drawString(50, y_position, "一、系统概览")
+        else:
+            c.drawString(50, y_position, "1. System Overview")
+        y_position -= 30
+        
+        c.setFont(chinese_font_normal, 10)
+        if use_chinese:
+            c.drawString(70, y_position, f"报告生成时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            y_position -= 15
+            c.drawString(70, y_position, f"数据时期：{year}年{month}月")
+            y_position -= 15
+            c.drawString(70, y_position, f"数据表：{table_name}")
+            y_position -= 15
+            c.drawString(70, y_position, f"水质监测记录数：{water_stats.get('total_records', 0)} 条")
+            y_position -= 15
+            c.drawString(70, y_position, f"鱼类数据记录数：{fish_stats.get('total_records', 0)} 条")
+        else:
+            c.drawString(70, y_position, f"Report generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            y_position -= 15
+            c.drawString(70, y_position, f"Data period: {year}-{month}")
+            y_position -= 15
+            c.drawString(70, y_position, f"Table: {table_name}")
+            y_position -= 15
+            c.drawString(70, y_position, f"Water quality records: {water_stats.get('total_records', 0)}")
+            y_position -= 15
+            c.drawString(70, y_position, f"Fish data records: {fish_stats.get('total_records', 0)}")
+        y_position -= 30
+        
+        # 2. 水质监测数据分析
+        c.setFont(chinese_font_bold, 14)
+        if use_chinese:
+            c.drawString(50, y_position, "二、水质监测数据分析")
+        else:
+            c.drawString(50, y_position, "2. Water Quality Analysis")
+        y_position -= 25
+        
+        c.setFont(chinese_font_normal, 10)
+        if water_stats:
+            if use_chinese:
+                c.drawString(70, y_position, f"监测省份数量：{water_stats.get('province_count', 0)} 个")
+                y_position -= 15
+                c.drawString(70, y_position, f"监测流域数量：{water_stats.get('basin_count', 0)} 个")
+                y_position -= 15
+                
+                # 显示水质等级分布
+                if 'grade_distribution' in water_stats:
+                    c.drawString(70, y_position, "水质等级分布：")
+                    y_position -= 15
+                    for grade, count in water_stats['grade_distribution'].items():
+                        c.drawString(90, y_position, f"等级{grade}: {count}条记录")
+                        y_position -= 12
+            else:
+                c.drawString(70, y_position, f"Provinces monitored: {water_stats.get('province_count', 0)}")
+                y_position -= 15
+                c.drawString(70, y_position, f"Basins monitored: {water_stats.get('basin_count', 0)}")
+                y_position -= 15
+                
+                if 'grade_distribution' in water_stats:
+                    c.drawString(70, y_position, "Water quality grade distribution:")
+                    y_position -= 15
+                    for grade, count in water_stats['grade_distribution'].items():
+                        c.drawString(90, y_position, f"Grade {grade}: {count} records")
+                        y_position -= 12
+        else:
+            if use_chinese:
+                c.drawString(70, y_position, "暂无水质数据")
+            else:
+                c.drawString(70, y_position, "No water quality data available")
+        y_position -= 30
+        
+        # 3. 鱼类数据分析
+        c.setFont(chinese_font_bold, 14)
+        if use_chinese:
+            c.drawString(50, y_position, "三、鱼类数据分析")
+        else:
+            c.drawString(50, y_position, "3. Fish Data Analysis")
+        y_position -= 25
+        
+        c.setFont(chinese_font_normal, 10)
+        if fish_stats:
+            if use_chinese:
+                c.drawString(70, y_position, f"鱼类种类数量：{fish_stats.get('species_count', 0)} 种")
+                y_position -= 15
+                c.drawString(70, y_position, f"平均重量：{fish_stats.get('avg_weight', 0)} 克")
+                y_position -= 15
+                c.drawString(70, y_position, f"最大重量：{fish_stats.get('max_weight', 0)} 克")
+                y_position -= 20
+                
+                # 显示主要鱼类分布
+                if 'species_distribution' in fish_stats:
+                    c.drawString(70, y_position, "主要鱼类分布：")
+                    y_position -= 15
+                    for species, count in fish_stats['species_distribution'].items():
+                        c.drawString(90, y_position, f"{species}: {count}条")
+                        y_position -= 12
+            else:
+                c.drawString(70, y_position, f"Fish species count: {fish_stats.get('species_count', 0)}")
+                y_position -= 15
+                c.drawString(70, y_position, f"Average weight: {fish_stats.get('avg_weight', 0)} g")
+                y_position -= 15
+                c.drawString(70, y_position, f"Maximum weight: {fish_stats.get('max_weight', 0)} g")
+                y_position -= 20
+                
+                if 'species_distribution' in fish_stats:
+                    c.drawString(70, y_position, "Main species distribution:")
+                    y_position -= 15
+                    for species, count in fish_stats['species_distribution'].items():
+                        c.drawString(90, y_position, f"{species}: {count} records")
+                        y_position -= 12
+        else:
+            if use_chinese:
+                c.drawString(70, y_position, "暂无鱼类数据")
+            else:
+                c.drawString(70, y_position, "No fish data available")
+        y_position -= 30
+        
+        # 4. 数据可视化图表
+        if chart_files:
+            c.setFont(chinese_font_bold, 14)
+            if use_chinese:
+                c.drawString(50, y_position, "四、数据可视化图表")
+            else:
+                c.drawString(50, y_position, "4. Data Visualization")
+            y_position -= 25
+            
+            # 检查页面空间，如果不够则新建页面
+            if y_position < 300:
+                c.showPage()
+                y_position = height - 50
+            
+            # 嵌入图表
+            for i, chart_file in enumerate(chart_files):
+                try:
+                    if os.path.exists(chart_file):
+                        # 计算图表尺寸和位置
+                        chart_width = 400
+                        chart_height = 250
+                        x_pos = (width - chart_width) / 2
+                        
+                        # 检查页面空间
+                        if y_position - chart_height < 50:
+                            c.showPage()
+                            y_position = height - 50
+                        
+                        # 插入图表
+                        c.drawImage(chart_file, x_pos, y_position - chart_height, 
+                                  width=chart_width, height=chart_height)
+                        y_position -= chart_height + 30
+                        
+                        print(f"图表 {chart_file} 已嵌入PDF")
+                except Exception as e:
+                    print(f"嵌入图表失败: {e}")
+                    if use_chinese:
+                        c.drawString(70, y_position, f"图表 {i+1} 加载失败")
+                    else:
+                        c.drawString(70, y_position, f"Chart {i+1} failed to load")
+                    y_position -= 20
+        
+        # 5. 报告结论
+        # 检查页面空间
+        if y_position < 200:
+            c.showPage()
+            y_position = height - 50
+        
+        c.setFont(chinese_font_bold, 14)
+        if use_chinese:
+            c.drawString(50, y_position, "五、分析结论")
+        else:
+            c.drawString(50, y_position, "5. Analysis Conclusions")
+        y_position -= 25
+        
+        c.setFont(chinese_font_normal, 10)
+        if use_chinese:
+            conclusion_lines = [
+                f"本期({year}年{month}月)海洋牧场监测报告分析完成。",
+                f"本期共监测水质数据 {water_stats.get('total_records', 0)} 条，鱼类数据 {fish_stats.get('total_records', 0)} 条。",
+                "主要发现："
+            ]
+            
+            if water_stats:
+                conclusion_lines.append(f"• 水质监测覆盖 {water_stats.get('province_count', 0)} 个省份，{water_stats.get('basin_count', 0)} 个流域")
+                if 'grade_distribution' in water_stats:
+                    best_grade = min(water_stats['grade_distribution'].keys())
+                    conclusion_lines.append(f"• 最优水质等级为 {best_grade}")
+            
+            if fish_stats:
+                conclusion_lines.append(f"• 监测到鱼类种类共 {fish_stats.get('species_count', 0)} 种")
+                conclusion_lines.append(f"• 鱼类平均重量 {fish_stats.get('avg_weight', 0)} 克")
+            
+            conclusion_lines.extend([
+                "",
+                "建议：",
+                "• 继续加强水质监测，确保海洋环境质量",
+                "• 保持鱼类资源的可持续发展",
+                "• 定期进行数据分析和报告生成",
+                "",
+                "报告生成完成。"
+            ])
+        else:
+            conclusion_lines = [
+                f"Ocean ranch monitoring report for {year}-{month} completed.",
+                f"This period monitored {water_stats.get('total_records', 0)} water quality records and {fish_stats.get('total_records', 0)} fish data records.",
+                "Key findings:"
+            ]
+            
+            if water_stats:
+                conclusion_lines.append(f"• Water quality monitoring covers {water_stats.get('province_count', 0)} provinces and {water_stats.get('basin_count', 0)} basins")
+                if 'grade_distribution' in water_stats:
+                    best_grade = min(water_stats['grade_distribution'].keys())
+                    conclusion_lines.append(f"• Best water quality grade: {best_grade}")
+            
+            if fish_stats:
+                conclusion_lines.append(f"• Total fish species monitored: {fish_stats.get('species_count', 0)}")
+                conclusion_lines.append(f"• Average fish weight: {fish_stats.get('avg_weight', 0)} g")
+            
+            conclusion_lines.extend([
+                "",
+                "Recommendations:",
+                "• Continue strengthening water quality monitoring",
+                "• Maintain sustainable development of fish resources", 
+                "• Regular data analysis and report generation",
+                "",
+                "Report generation completed."
+            ])
+        
+        for line in conclusion_lines:
+            if y_position < 50:
+                c.showPage()
+                y_position = height - 50
+            
+            if line.startswith("•"):
+                c.drawString(90, y_position, line)
+            else:
+                c.drawString(70, y_position, line)
+            y_position -= 15
+        
+        print("报告内容绘制完成")
+        
+        # 清理生成的图表文件
+        for chart_file in chart_files:
+            try:
+                if os.path.exists(chart_file):
+                    os.remove(chart_file)
+                    print(f"已清理图表文件: {chart_file}")
+            except Exception as e:
+                print(f"清理图表文件失败: {e}")
+        
+        # 保存PDF
+        c.save()
+        print(f"PDF文件已保存: {filename}")
+        
+        return send_file(
+            filename,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        error_msg = f"PDF生成失败: {str(e)}"
+        print(error_msg)
+        print(f"错误类型: {type(e).__name__}")
+        import traceback
+        print(f"错误堆栈: {traceback.format_exc()}")
+        
+        # 应急方案：生成最简单的错误报告PDF
+        try:
+            print("尝试生成应急错误报告...")
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import A4
+            
+            emergency_filename = f"error_report_{year}_{month}.pdf"
+            c = canvas.Canvas(emergency_filename, pagesize=A4)
+            width, height = A4
+            
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(100, height - 100, "Error Report / 错误报告")
+            c.setFont("Helvetica", 12)
+            c.drawString(100, height - 130, f"Failed to generate comprehensive report for {year}-{month}")
+            c.drawString(100, height - 150, f"无法生成 {year}年{month}月 的综合报告")
+            c.drawString(100, height - 170, f"Error: {str(e)}")
+            c.drawString(100, height - 190, "Please check server logs for details.")
+            c.drawString(100, height - 210, "请检查服务器日志获取详细信息。")
+            
+            c.save()
+            print("应急错误报告生成成功")
+            
+            return send_file(
+                emergency_filename,
+                as_attachment=True,
+                download_name=emergency_filename,
+                mimetype='application/pdf'
+            )
+        except Exception as emergency_error:
+            print(f"应急报告也失败了: {str(emergency_error)}")
+            return jsonify({"success": False, "error": error_msg}), 500
+
+# 数据上传相关API
+@app.route('/api/upload/data', methods=['POST'])
+def upload_data():
+    """上传单条或多条数据"""
+    try:
+        data = request.get_json()
+        data_type = data.get('dataType')
+        upload_data = data.get('data', [])
+        
+        if not data_type or not upload_data:
+            return jsonify({"success": False, "error": "缺少数据类型或数据内容"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        for item in upload_data:
+            try:
+                if data_type == 'water_quality':
+                    success = insert_water_quality_data(cursor, item)
+                elif data_type == 'fish_data':
+                    success = insert_fish_data(cursor, item)
+                else:
+                    return jsonify({"success": False, "error": "不支持的数据类型"}), 400
+                
+                if success:
+                    success_count += 1
+                else:
+                    error_count += 1
+                    errors.append(f"数据插入失败: {item}")
+                    
+            except Exception as e:
+                error_count += 1
+                errors.append(f"处理数据时出错: {str(e)}")
+        
+        conn.commit()
+        conn.close()
+        
+        result = {
+            "success": error_count == 0,
+            "message": f"成功上传 {success_count} 条数据",
+            "success_count": success_count,
+            "error_count": error_count
+        }
+        
+        if errors and len(errors) <= 5:  # 只返回前5个错误
+            result["errors"] = errors[:5]
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": f"数据上传失败: {str(e)}"}), 500
+
+@app.route('/api/upload/csv', methods=['POST'])
+def upload_csv_data():
+    """批量上传CSV数据"""
+    try:
+        data = request.get_json()
+        data_type = data.get('dataType')
+        csv_data = data.get('data', [])
+        
+        if not data_type or not csv_data:
+            return jsonify({"success": False, "error": "缺少数据类型或数据内容"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        success_count = 0
+        error_count = 0
+        
+        for item in csv_data:
+            try:
+                # 移除ID字段
+                if 'id' in item:
+                    del item['id']
+                
+                if data_type == 'water_quality':
+                    success = insert_water_quality_data(cursor, item)
+                elif data_type == 'fish_data':
+                    success = insert_fish_data(cursor, item)
+                else:
+                    return jsonify({"success": False, "error": "不支持的数据类型"}), 400
+                
+                if success:
+                    success_count += 1
+                else:
+                    error_count += 1
+                    
+            except Exception as e:
+                error_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": error_count == 0,
+            "message": f"批量上传完成，成功 {success_count} 条，失败 {error_count} 条",
+            "success_count": success_count,
+            "error_count": error_count
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": f"CSV数据上传失败: {str(e)}"}), 500
+
+def insert_water_quality_data(cursor, data):
+    """插入水质数据到数据库"""
+    try:
+        # 获取当前年月来确定表名
+        monitor_time = data.get('monitor_time')
+        
+        if monitor_time:
+            # 从时间中提取年月
+            from datetime import datetime
+            dt = datetime.fromisoformat(monitor_time.replace('Z', '+00:00'))
+            table_name = f"{dt.year}-{dt.month:02d}"
+        else:
+            # 如果没有时间，使用当前时间
+            from datetime import datetime
+            now = datetime.now()
+            table_name = f"{now.year}-{now.month:02d}"
+        
+        # 创建表（如果不存在）
+        create_water_quality_table_if_not_exists(cursor, table_name)
+        
+        # 准备插入数据
+        fields = []
+        values = []
+        placeholders = []
+        
+        # 定义字段映射
+        field_mapping = {
+            'province': 'province',
+            'basin': 'basin', 
+            'section_name': 'section_name',
+            'monitor_time': 'monitor_time',
+            'water_quality_category': 'water_quality_category',
+            'water_temperature': 'water_temperature',
+            'pH': 'pH',
+            'dissolved_oxygen': 'dissolved_oxygen',
+            'conductivity': 'conductivity',
+            'turbidity': 'turbidity',
+            'permanganate_index': 'permanganate_index',
+            'ammonia_nitrogen': 'ammonia_nitrogen',
+            'total_phosphorus': 'total_phosphorus',
+            'total_nitrogen': 'total_nitrogen',
+            'chlorophyll_a': 'chlorophyll_a',
+            'algae_density': 'algae_density',
+            'station_status': 'station_status'
+        }
+        
+        for key, db_field in field_mapping.items():
+            if key in data and data[key] and str(data[key]).strip():
+                fields.append(db_field)
+                values.append(data[key])
+                placeholders.append('%s')
+        
+        if not fields:
+            return False
+        
+        query = f"INSERT INTO `{table_name}` ({', '.join(fields)}) VALUES ({', '.join(placeholders)})"
+        cursor.execute(query, values)
+        return True
+        
+    except Exception as e:
+        return False
+
+def insert_fish_data(cursor, data):
+    """插入鱼类数据到数据库"""
+    try:
+        # 准备插入数据
+        fields = []
+        values = []
+        placeholders = []
+        
+        # 定义字段映射
+        field_mapping = {
+            'species': 'species',
+            'weight': 'weight',
+            'length1': 'length1',
+            'length2': 'length2',
+            'length3': 'length3',
+            'height': 'height',
+            'width': 'width'
+        }
+        
+        for key, db_field in field_mapping.items():
+            if key in data and data[key] and str(data[key]).strip():
+                fields.append(db_field)
+                values.append(data[key])
+                placeholders.append('%s')
+        
+        if not fields:
+            return False
+        
+        query = f"INSERT INTO fishes ({', '.join(fields)}) VALUES ({', '.join(placeholders)})"
+        cursor.execute(query, values)
+        return True
+        
+    except Exception as e:
+        return False
+
+def create_water_quality_table_if_not_exists(cursor, table_name):
+    """创建水质数据表（如果不存在）"""
+    try:
+        cursor.execute(f"SHOW TABLES LIKE '{table_name}'")
+        if cursor.fetchone():
+            return  # 表已存在
+        
+        # 创建表
+        create_query = f"""
+        CREATE TABLE `{table_name}` (
+            `province` VARCHAR(255) NOT NULL COMMENT '省份',
+            `basin` VARCHAR(255) NOT NULL COMMENT '流域',
+            `section_name` VARCHAR(255) NOT NULL COMMENT '断面名称',
+            `monitor_time` DATETIME NULL COMMENT '监测时间',
+            `water_quality_category` VARCHAR(255) NULL COMMENT '水质类别',
+            `water_temperature` FLOAT NULL COMMENT '水温',
+            `pH` FLOAT NULL COMMENT 'pH值',
+            `dissolved_oxygen` FLOAT NULL COMMENT '溶解氧',
+            `conductivity` FLOAT NULL COMMENT '电导率',
+            `turbidity` FLOAT NULL COMMENT '浊度',
+            `permanganate_index` FLOAT NULL COMMENT '高锰酸盐指数',
+            `ammonia_nitrogen` FLOAT NULL COMMENT '氨氮',
+            `total_phosphorus` FLOAT NULL COMMENT '总磷',
+            `total_nitrogen` FLOAT NULL COMMENT '总氮',
+            `chlorophyll_a` FLOAT NULL COMMENT '叶绿素α',
+            `algae_density` FLOAT NULL COMMENT '藻密度',
+            `station_status` VARCHAR(255) NULL COMMENT '站点情况'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='{table_name}水质监测数据'
+        """
+        cursor.execute(create_query)
+        
+    except Exception as e:
+        pass
+
+
+
+@app.route('/api/recent-data', methods=['GET'])
+def get_recent_data():
+    """获取最近上传的数据"""
+    try:
+        data_type = request.args.get('dataType')
+        limit = int(request.args.get('limit', 20))
+        
+        if not data_type:
+            return jsonify({"success": False, "error": "缺少数据类型参数"}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        recent_data = []
+        
+        if data_type == 'water_quality':
+            # 获取最近的水质数据
+            recent_data = get_recent_water_quality_data(cursor, limit)
+        elif data_type == 'fish_data':
+            # 获取最近的鱼类数据
+            recent_data = get_recent_fish_data(cursor, limit)
+        else:
+            return jsonify({"success": False, "error": "不支持的数据类型"}), 400
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": recent_data,
+            "count": len(recent_data)
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": f"获取最近数据失败: {str(e)}"}), 500
+
+def get_recent_water_quality_data(cursor, limit):
+    """获取最近的水质数据"""
+    try:
+        # 获取所有水质数据表
+        cursor.execute("SHOW TABLES LIKE '%-%'")
+        tables = cursor.fetchall()
+        
+        all_data = []
+        
+        for table_info in tables:
+            table_name = list(table_info.values())[0]
+            
+            # 验证表名格式 (YYYY-MM)
+            if len(table_name) == 7 and table_name[4] == '-':
+                try:
+                    # 获取该表的最新数据
+                    query = f"""
+                    SELECT *, '{table_name}' as source_table 
+                    FROM `{table_name}` 
+                    ORDER BY monitor_time DESC, province, basin, section_name 
+                    LIMIT {limit}
+                    """
+                    cursor.execute(query)
+                    table_data = cursor.fetchall()
+                    
+                    # 为每条数据添加估算的上传时间
+                    for row in table_data:
+                        # 如果有monitor_time就用它，否则用表名估算
+                        if row.get('monitor_time'):
+                            row['upload_time'] = row['monitor_time']
+                        else:
+                            # 用表名生成一个估算时间
+                            year, month = table_name.split('-')
+                            row['upload_time'] = f"{year}-{month}-01T00:00:00"
+                    
+                    all_data.extend(table_data)
+                    
+                except Exception as e:
+                    continue
+        
+        # 按时间排序并限制数量
+        all_data.sort(key=lambda x: x.get('upload_time', ''), reverse=True)
+        return all_data[:limit]
+        
+    except Exception as e:
+        return []
+
+def get_recent_fish_data(cursor, limit):
+    """获取最近的鱼类数据"""
+    try:
+        # 首先检查表是否存在
+        cursor.execute("SHOW TABLES LIKE 'fishes'")
+        table_exists = cursor.fetchone()
+        if not table_exists:
+            return []
+        
+        # 获取表结构，查看是否有id字段
+        cursor.execute("DESCRIBE fishes")
+        table_structure = cursor.fetchall()
+        
+        # 检查是否有id字段
+        has_id_field = any(field['Field'] == 'id' for field in table_structure)
+        
+        # 根据是否有id字段选择不同的查询策略
+        if has_id_field:
+            query = f"SELECT * FROM fishes ORDER BY id DESC LIMIT {limit}"
+            cursor.execute(query)
+            fish_data = cursor.fetchall()
+        else:
+            # 如果没有id字段，先获取总数，然后从末尾开始获取数据
+            cursor.execute("SELECT COUNT(*) as total FROM fishes")
+            total_count = cursor.fetchone()['total']
+            
+            if total_count <= limit:
+                # 如果总数据量小于等于限制数量，直接获取所有数据
+                query = "SELECT * FROM fishes"
+            else:
+                # 获取最后几条数据：跳过前面的数据，获取末尾的数据
+                offset = total_count - limit
+                query = f"SELECT * FROM fishes LIMIT {limit} OFFSET {offset}"
+            
+            cursor.execute(query)
+            fish_data = cursor.fetchall()
+            
+            # 由于我们获取的是末尾数据，需要反转顺序让最新的数据在前面
+            fish_data = list(reversed(fish_data))
+        
+        # 为每条数据添加估算的上传时间
+        for i, row in enumerate(fish_data):
+            from datetime import datetime, timedelta
+            # 如果有id字段，使用id作为时间顺序；否则使用索引
+            if has_id_field and 'id' in row:
+                # ID越大越新
+                estimated_time = datetime.now() - timedelta(minutes=len(fish_data)-i-1)
+            else:
+                # 没有id，按索引估算时间
+                estimated_time = datetime.now() - timedelta(minutes=i)
+            row['upload_time'] = estimated_time.isoformat()
+        
+        return fish_data
+        
+    except Exception as e:
+        return []
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=SERVER_PORT, debug=True)

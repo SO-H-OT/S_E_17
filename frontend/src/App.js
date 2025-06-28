@@ -10,6 +10,7 @@ import UserListPage from './pages/UserListPage';
 import EditUser from './pages/EditUsersPage';
 import BlankPage from './pages/BlankPage';
 import UserInfoPage from './pages/UserInfoPage';
+import DataUploadPage from './pages/DataUploadPage';
 
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
           </Typography>
           <Button color="inherit" href="/">首页</Button>
           <Button color="inherit" href="/second">数据分析</Button>
+          <Button color="inherit" href="/upload">数据上传</Button>
           <Button color="inherit" href="/market-online">在线市场</Button>
           <Button color="inherit" href="/weather">天气预报</Button>
           <Button color="inherit" href="/video">视频播放</Button>
@@ -58,6 +60,7 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/second" element={<SecondPage />} />
+        <Route path="/upload" element={<DataUploadPage />} />
         <Route path="/market-online" element={<MarketOnlinePage />} />
         <Route path="/weather" element={<WeatherPage />} />
         <Route path="/video" element={<VideoPage />} />

@@ -323,30 +323,83 @@ export const apiService = {
     }
   },
 
-  exportComprehensiveReport: async (year, month) => {
-    const apiClient = await createApiClient();
+  exportComprehensiveReport: async (year, month, format = 'pdf') => {
+    // URL直接下载方式
+    const url = `http://localhost:5000/api/export/comprehensive-report?year=${year}&month=${month}&format=${format}`;
+    
+    console.log('导出综合报告 URL:', url);
+    console.log('参数:', { year, month, format });
     
     try {
-      const response = await apiClient.get('/api/export/comprehensive-report', { 
-        params: { year, month, format: 'excel' },
-        responseType: 'blob'
-      });
-      
-      // 创建下载链接
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      
-      const filename = `comprehensive_report_${year}_${month}.xlsx`;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      
-      return { success: true, message: '导出成功' };
+      window.open(url, '_blank');
+      return { success: true, message: '报告正在生成并下载...' };
     } catch (error) {
+      console.error('导出综合报告错误:', error);
       throw new Error('导出综合报告失败');
+    }
+  },
+
+  // 数据上传功能
+  uploadData: async (dataType, data) => {
+    const apiClient = await createApiClient();
+    try {
+      const response = await apiClient.post('/api/upload/data', {
+        dataType,
+        data
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Upload data API error:", error);
+      throw new Error(`上传${dataType === 'water_quality' ? '水质' : '鱼类'}数据失败: ${error.response?.data?.error || error.message}`);
+    }
+  },
+
+  // CSV文件上传
+  uploadCsvData: async (dataType, csvData, progressCallback) => {
+    const apiClient = await createApiClient();
+    try {
+      // 分批上传大量数据
+      const batchSize = 100;
+      const batches = [];
+      for (let i = 0; i < csvData.length; i += batchSize) {
+        batches.push(csvData.slice(i, i + batchSize));
+      }
+
+      let uploadedCount = 0;
+      for (const batch of batches) {
+        const response = await apiClient.post('/api/upload/csv', {
+          dataType,
+          data: batch
+        });
+        
+        if (!response.data.success) {
+          throw new Error(response.data.error);
+        }
+        
+        uploadedCount += batch.length;
+        if (progressCallback) {
+          progressCallback({ uploaded: uploadedCount, total: csvData.length });
+        }
+      }
+
+      return { success: true, message: `成功上传 ${uploadedCount} 条数据` };
+    } catch (error) {
+      console.error("Upload CSV data API error:", error);
+      throw new Error(`批量上传${dataType === 'water_quality' ? '水质' : '鱼类'}数据失败: ${error.response?.data?.error || error.message}`);
+    }
+  },
+
+  // 获取最近上传的数据
+  getRecentUploadedData: async (dataType, limit = 20) => {
+    const apiClient = await createApiClient();
+    try {
+      const response = await apiClient.get('/api/recent-data', {
+        params: { dataType, limit }
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Get recent data API error:", error);
+      throw new Error(`获取最近上传${dataType === 'water_quality' ? '水质' : '鱼类'}数据失败: ${error.response?.data?.error || error.message}`);
     }
   }
 };

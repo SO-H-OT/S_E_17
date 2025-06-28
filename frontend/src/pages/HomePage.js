@@ -9,8 +9,9 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer 
 } from 'recharts';
-import { Download, GetApp } from '@mui/icons-material';
+import { Download, GetApp, Image as ImageIcon } from '@mui/icons-material';
 import { apiService } from '../services/api';
+import { exportChart, exportAllChartsInPage } from '../utils/chartExport';
 
 // 模拟历史水质数据（折线图 + 表格）
 const mockWaterQualityData = [
@@ -39,9 +40,23 @@ const mockCurrentStatus = {
 
 // 水质数据图表组件（保留原样）
 const WaterQualityChart = ({ data }) => {
+  const handleExportChart = () => {
+    exportChart('water-quality-trend-chart', '水质质量趋势图', 'png');
+  };
+
   return (
-    <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, height: 350 }}>
-      <Typography variant="h6" gutterBottom>水质质量趋势</Typography>
+    <Box id="water-quality-trend-chart" className="chart-container" sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, height: 350 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">水质质量趋势</Typography>
+        <Button
+          size="small"
+          startIcon={<ImageIcon />}
+          onClick={handleExportChart}
+          variant="outlined"
+        >
+          导出图表
+        </Button>
+      </Box>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" />
@@ -90,9 +105,23 @@ const WaterQualityDistribution = ({ data }) => {
   // 直接过滤掉 value 为 0 的项
   const filteredData = data.filter(entry => entry.value > 0);
 
+  const handleExportChart = () => {
+    exportChart('water-quality-distribution-chart', '水质分布图', 'png');
+  };
+
   return (
-    <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, height: 350 }}>
-      <Typography variant="h6" gutterBottom>水质分布</Typography>
+    <Box id="water-quality-distribution-chart" className="chart-container" sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, height: 350 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">水质分布</Typography>
+        <Button
+          size="small"
+          startIcon={<ImageIcon />}
+          onClick={handleExportChart}
+          variant="outlined"
+        >
+          导出图表
+        </Button>
+      </Box>
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
@@ -157,6 +186,9 @@ function HomePage() {
  
   const [selectedDate, setSelectedDate] = useState('2020-05');
   const [newSelectedDate, setNewSelectedDate] = useState('2020-05');
+  
+  // 新增：可用时间段状态
+  const [availablePeriods, setAvailablePeriods] = useState([]);
 
   const [provinceBasinList, setProvinceBasinList] = useState([]);
   const [selectedProvinceBasin, setSelectedProvinceBasin] = useState('');
@@ -169,6 +201,42 @@ function HomePage() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
   const [showExportAlert, setShowExportAlert] = useState(false);
+
+  // 获取可用时间段
+  const fetchAvailablePeriods = async () => {
+    try {
+      const response = await apiService.getWaterQualityPeriods();
+      if (response.success) {
+        // 将年月格式化为 YYYY-MM 字符串
+        const periodStrings = response.data
+          .map(period => `${period.year}-${period.month.toString().padStart(2, '0')}`)
+          .sort(); // 按时间顺序排序
+        
+        console.log('获取到的可用时间段:', periodStrings);
+        setAvailablePeriods(periodStrings);
+        
+        // 如果当前选择的时间段不在可用列表中，设置为最新的时间段
+        if (periodStrings.length > 0) {
+          const latestPeriod = periodStrings[periodStrings.length - 1];
+          if (!periodStrings.includes(selectedDate)) {
+            setSelectedDate(latestPeriod);
+          }
+          if (!periodStrings.includes(newSelectedDate)) {
+            setNewSelectedDate(latestPeriod);
+          }
+        }
+      } else {
+        console.error('获取可用时间段失败:', response.error);
+      }
+    } catch (error) {
+      console.error('获取可用时间段时出错:', error);
+    }
+  };
+
+  // 在页面加载时获取可用时间段
+  useEffect(() => {
+    fetchAvailablePeriods();
+  }, []);
 
   // 获取区域列表
   useEffect(() => {
@@ -360,14 +428,23 @@ const handleExportWaterQuality = async (format) => {
   }
 };
 
-const handleExportComprehensiveReport = async () => {
+const handleExportComprehensiveReport = async (format = 'pdf') => {
   setIsExporting(true);
+  console.log(`开始导出综合报告，格式: ${format}`);
+  
   try {
     const [year, month] = selectedDate.split('-');
-    await apiService.exportComprehensiveReport(year, month);
-    setExportMessage('综合报告已成功导出');
+    console.log(`参数: year=${year}, month=${month}, format=${format}`);
+    
+    const result = await apiService.exportComprehensiveReport(year, month, format);
+    console.log('导出成功:', result);
+    
+    setExportMessage(`综合报告已成功导出为 ${format.toUpperCase()} 格式`);
     setShowExportAlert(true);
   } catch (error) {
+    console.error('导出失败详情:', error);
+    console.error('错误堆栈:', error.stack);
+    
     setExportMessage('导出失败: ' + error.message);
     setShowExportAlert(true);
   } finally {
@@ -433,7 +510,7 @@ const handleCloseAlert = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h5">水质数据可视化</Typography>
         <Box>
-          <ButtonGroup disabled={isExporting}>
+          <ButtonGroup disabled={isExporting} sx={{ mr: 1 }}>
             <Button 
               startIcon={<Download />}
               onClick={() => handleExportWaterQuality('csv')}
@@ -450,13 +527,33 @@ const handleCloseAlert = () => {
             </Button>
             <Button 
               startIcon={<GetApp />}
-              onClick={handleExportComprehensiveReport}
+              onClick={() => handleExportComprehensiveReport('pdf')}
               size="small"
               variant="outlined"
+              color="primary"
             >
-              综合报告
+              PDF报告
+            </Button>
+
+            <Button 
+              startIcon={<GetApp />}
+              onClick={() => handleExportComprehensiveReport('excel')}
+              size="small"
+              variant="outlined"
+              color="secondary"
+            >
+              Excel报告
             </Button>
           </ButtonGroup>
+          <Button 
+            startIcon={<ImageIcon />}
+            onClick={() => exportAllChartsInPage('水质监测')}
+            size="small"
+            variant="contained"
+            color="secondary"
+          >
+            导出所有图表
+          </Button>
           {isExporting && <CircularProgress size={20} sx={{ ml: 2 }} />}
         </Box>
       </Box>
@@ -467,14 +564,23 @@ const handleCloseAlert = () => {
           label="选择时间"
           onChange={(e) => setSelectedDate(e.target.value)}
         >
-          {[
-            '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10',
-            '2020-11', '2020-12', '2021-01', '2021-02', '2021-03', '2021-04','2025-05'
-          ].map((date) => (
-            <MenuItem key={date} value={date}>
-              {date}
-            </MenuItem>
-          ))}
+          {availablePeriods.length > 0 ? (
+            availablePeriods.map((date) => (
+              <MenuItem key={date} value={date}>
+                {date}
+              </MenuItem>
+            ))
+          ) : (
+            // 备用硬编码选项（如果API失败）
+            [
+              '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10',
+              '2020-11', '2020-12', '2021-01', '2021-02', '2021-03', '2021-04','2025-05'
+            ].map((date) => (
+              <MenuItem key={date} value={date}>
+                {date}
+              </MenuItem>
+            ))
+          )}
         </Select>
       </FormControl>
 
@@ -518,14 +624,23 @@ const handleCloseAlert = () => {
         label="选择时间"
         onChange={(e) => setNewSelectedDate(e.target.value)} // 更新新的状态变量
       >
-        {[
-          '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10',
-          '2020-11', '2020-12', '2021-01', '2021-02', '2021-03', '2021-04', '2025-05'
-        ].map((date) => (
-          <MenuItem key={date} value={date}>
-            {date}
-          </MenuItem>
-        ))}
+        {availablePeriods.length > 0 ? (
+          availablePeriods.map((date) => (
+            <MenuItem key={date} value={date}>
+              {date}
+            </MenuItem>
+          ))
+        ) : (
+          // 备用硬编码选项（如果API失败）
+          [
+            '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10',
+            '2020-11', '2020-12', '2021-01', '2021-02', '2021-03', '2021-04', '2025-05'
+          ].map((date) => (
+            <MenuItem key={date} value={date}>
+              {date}
+            </MenuItem>
+          ))
+        )}
       </Select>
     </FormControl>
 
