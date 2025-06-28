@@ -131,6 +131,16 @@ function DataUploadPage() {
           `✅ 成功上传 ${manualDataList.length} 条${dataType === DATA_TYPES.WATER_QUALITY ? '水质' : '鱼类'}数据！点击"最近上传的数据"标签查看。`, 
           'success'
         );
+        
+        // 触发异常检测事件（通知首页）
+        if (dataType === DATA_TYPES.WATER_QUALITY) {
+          localStorage.setItem('dataUploadSuccess', JSON.stringify({
+            timestamp: Date.now(),
+            dataType: 'water_quality',
+            count: manualDataList.length
+          }));
+        }
+        
         setManualDataList([]);
         // 如果用户在查看数据页面，自动刷新
         if (activeTab === 2) {
@@ -195,6 +205,16 @@ function DataUploadPage() {
           `✅ 批量上传成功！共上传 ${csvData.length} 条${dataType === DATA_TYPES.WATER_QUALITY ? '水质' : '鱼类'}数据。点击"最近上传的数据"标签查看。`, 
           'success'
         );
+        
+        // 触发异常检测事件（通知首页）
+        if (dataType === DATA_TYPES.WATER_QUALITY) {
+          localStorage.setItem('dataUploadSuccess', JSON.stringify({
+            timestamp: Date.now(),
+            dataType: 'water_quality',
+            count: csvData.length
+          }));
+        }
+        
         setCsvFile(null);
         setCsvData([]);
         setUploadProgress({ uploaded: 0, total: 0 });

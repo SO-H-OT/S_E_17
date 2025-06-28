@@ -1,0 +1,6 @@
+province,basin,section_name,monitor_time,dissolved_oxygen,ammonia_nitrogen,ph,total_phosphorus,temperature,chemical_oxygen_demand,biochemical_oxygen_demand,total_nitrogen,fluoride,permanganate_index,suspended_solids,volatile_phenol,petroleum,anionic_surfactant
+山东省,黄河,济南断面,2025-06-29,15.2,3.5,9.8,0.8,35.2,45.0,12.0,8.5,1.8,15.0,80.0,0.08,0.15,0.6
+江苏省,长江,南京断面,2025-06-29,2.1,2.8,5.2,0.6,8.5,35.0,8.0,6.2,1.2,12.0,65.0,0.06,0.12,0.4
+广东省,珠江,广州断面,2025-06-29,18.5,4.2,10.5,1.2,42.0,55.0,15.0,12.0,2.5,18.0,120.0,0.12,0.25,0.8
+浙江省,钱塘江,杭州断面,2025-06-29,1.8,5.5,4.1,1.8,5.2,80.0,25.0,15.0,3.2,25.0,150.0,0.15,0.35,1.2
+福建省,闽江,福州断面,2025-06-29,20.0,6.8,11.2,2.5,45.8,95.0,30.0,18.0,4.0,30.0,180.0,0.20,0.45,1.5 

@@ -6,6 +6,7 @@ import requests
 import os
 import pymysql
 from werkzeug.utils import secure_filename
+from werkzeug.security import safe_join
 import time
 from functools import wraps
 from sklearn.linear_model import LinearRegression  # 修改导入语句
@@ -452,6 +453,7 @@ def register():
         conn.close()
         return jsonify({"success": True, "message": "注册成功"}), 201
     except Exception as e:
+        app.logger.error(f"Error during registration: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/login', methods=['POST'])
@@ -495,6 +497,7 @@ def login():
             }
         }), 200
     except Exception as e:
+        app.logger.error(f"Error during registration: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/users', methods=['GET'])
