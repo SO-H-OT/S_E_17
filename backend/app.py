@@ -905,6 +905,108 @@ def get_province_basin_list():
         app.logger.error(f"Error during query execution: {str(e)}")
         app.logger.error(f"Query result: {rows}")
         return jsonify({"success": False, "error": str(e)}), 500
+    
+
+@app.route('/api/fishes/species-list', methods=['GET'])
+def get_fish_species_list():
+    try:
+        # 连接数据库并执行查询
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # 查询所有不重复的鱼类品种
+            sql = """
+                SELECT DISTINCT species
+                FROM `fishes`
+                ORDER BY species
+            """
+            app.logger.info(f"Executing SQL: {sql}") 
+            
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+        conn.close()
+        app.logger.info(f"Query result: {rows}")  
+        
+        if not rows:
+            app.logger.error("No fish species found")
+            return jsonify({"success": False, "error": "No fish species found"}), 404
+
+        # 构建返回结果（直接提取species字段值）
+        result = [row["species"] for row in rows]  # 使用字段名访问数据
+        return jsonify({"success": True, "data": result})
+
+    except Exception as e:
+        app.logger.error(f"Error during query execution: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/fishes/species-data', methods=['GET'])
+def get_fish_species_data():
+    conn = None
+    try:
+        species = request.args.get('species')
+        if not species:
+            return jsonify({"success": False, "error": "Species parameter is required"}), 400
+
+        # 获取数据库连接
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            sql = """
+                SELECT 
+                    species,
+                    weight,
+                    length1,
+                    length2,
+                    length3,
+                    height,
+                    width
+                FROM fishes 
+                WHERE species = %s
+            """
+            app.logger.info(f"Executing SQL: {sql} with species: {species}")
+            cursor.execute(sql, (species,))
+            rows = cursor.fetchall()
+
+        if not rows:
+            return jsonify({"success": False, "error": f"No data found for species: {species}"}), 404
+
+        # 计算平均值
+        def safe_mean(values):
+            clean_values = [v for v in values if v is not None]
+            return round(sum(clean_values)/len(clean_values), 2) if clean_values else None
+
+        averages = {
+            "weight": safe_mean([r['weight'] for r in rows]),
+            "length1": safe_mean([r['length1'] for r in rows]),
+            "length2": safe_mean([r['length2'] for r in rows]),
+            "length3": safe_mean([r['length3'] for r in rows]),
+            "height": safe_mean([r['height'] for r in rows]),
+            "width": safe_mean([r['width'] for r in rows]),
+            "record_count": len(rows)
+        }
+
+        return jsonify({
+            "success": True,
+            "species": species,
+            "records": rows,
+            "averages": averages,
+            "units": {
+                "weight": "grams",
+                "length": "cm",
+                "height": "cm",
+                "width": "cm"
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error during query execution: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn and conn.open:  # 只有连接存在且未关闭时才关闭
+            try:
+                conn.close()
+            except Exception as e:
+                app.logger.warning(f"Error closing connection: {str(e)}")
+    
 
 @app.route('/api/water-quality/current_data', methods=['GET'])
 def get_current_data():
@@ -973,6 +1075,113 @@ def get_current_data():
     except Exception as e:
         app.logger.error(f"Error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+    
+
+@app.route('/api/fishes/weight-stats', methods=['GET'])
+def get_fish_weight_stats():
+    conn = None
+    try:
+        species = request.args.get('species')
+        if not species:
+            return jsonify({"success": False, "error": "Species parameter is required"}), 400
+
+        # 初始化结果结构
+        result = {
+            "success": True,
+            "species": species,
+            "weight_distribution": {
+                "<100g": 0,
+                "100-300g": 0,
+                "300-500g": 0,
+                "500-700g": 0,
+                "700-1000g": 0,
+                "1000-1500g": 0,
+                ">1500g": 0
+            },
+            "total_count": 0,
+            "unit": "grams",
+            "chart_data": []
+        }
+
+        sql = """
+            SELECT 
+                COALESCE(SUM(CASE WHEN weight < 100 THEN 1 ELSE 0 END), 0) AS under_100,
+                COALESCE(SUM(CASE WHEN weight >= 100 AND weight < 300 THEN 1 ELSE 0 END), 0) AS _100_to_300,
+                COALESCE(SUM(CASE WHEN weight >= 300 AND weight < 500 THEN 1 ELSE 0 END), 0) AS _300_to_500,
+                COALESCE(SUM(CASE WHEN weight >= 500 AND weight < 700 THEN 1 ELSE 0 END), 0) AS _500_to_700,
+                COALESCE(SUM(CASE WHEN weight >= 700 AND weight < 1000 THEN 1 ELSE 0 END), 0) AS _700_to_1000,
+                COALESCE(SUM(CASE WHEN weight >= 1000 AND weight < 1500 THEN 1 ELSE 0 END), 0) AS _1000_to_1500,
+                COALESCE(SUM(CASE WHEN weight >= 1500 THEN 1 ELSE 0 END), 0) AS over_1500,
+                COALESCE(COUNT(*), 0) AS total_count
+            FROM fishes 
+            WHERE species = %s
+        """
+
+        app.logger.info(f"Executing SQL: {sql} with species: {species}")
+
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql, (species,))
+            row = cursor.fetchone()
+
+            if not row:
+                return jsonify({"success": False, "error": f"No data found for species: {species}"}), 404
+
+            # 处理查询结果，确保所有值都是整数
+            processed_row = {}
+            for key, value in row.items():
+                # 处理可能的None值
+                if value is None:
+                    processed_row[key] = 0
+                # 处理数值类型（包括Decimal和普通数字）
+                elif isinstance(value, (int, float)):
+                    processed_row[key] = int(value)
+                # 尝试将其他类型转换为整数
+                else:
+                    try:
+                        processed_row[key] = int(value)
+                    except (ValueError, TypeError):
+                        processed_row[key] = 0
+                        app.logger.warning(f"Failed to convert {key} value: {value}")
+
+            # 映射数据库字段到前端显示名称
+            weight_mapping = {
+                "under_100": "<100g",
+                "_100_to_300": "100-300g",
+                "_300_to_500": "300-500g",
+                "_500_to_700": "500-700g",
+                "_700_to_1000": "700-1000g",
+                "_1000_to_1500": "1000-1500g",
+                "over_1500": ">1500g"
+            }
+
+            # 填充体重分布数据
+            for db_key, display_key in weight_mapping.items():
+                result["weight_distribution"][display_key] = processed_row[db_key]
+
+            # 设置总记录数
+            result["total_count"] = processed_row["total_count"]
+
+            # 生成饼图数据（过滤掉数量为0的区间）
+            result["chart_data"] = [
+                {"name": display_key, "value": count}
+                for db_key, display_key in weight_mapping.items()
+                if (count := processed_row[db_key]) > 0
+            ]
+        print(result)
+        return jsonify(result)
+       
+
+    except Exception as e:
+        app.logger.error(f"Error in get_fish_weight_stats: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception as e:
+                app.logger.warning(f"Error closing connection: {str(e)}")
+
 
 @app.route('/api/water-quality/category-statistics', methods=['GET'])
 def get_quality_category_statistics():
@@ -1076,7 +1285,7 @@ def get_full_data():
         app.logger.info(f"SQL Parameters: {params}")
 
         conn = get_db_connection()
-        with conn.cursor(DictCursor) as cursor:  # ✅ 局部使用 DictCursor
+        with conn.cursor(DictCursor) as cursor:  
             cursor.execute(sql, params)
             rows = cursor.fetchall()
         conn.close()
