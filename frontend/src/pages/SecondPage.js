@@ -1,13 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Grid, Paper, Typography } from '@mui/material';
+import { Container, Grid, Paper, Typography, Button, ButtonGroup, CircularProgress, Snackbar, Alert, Box } from '@mui/material';
 import { BarChart, Bar, PieChart, Pie, ScatterChart, Scatter,
          XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { Download, GetApp } from '@mui/icons-material';
 import { apiService } from '../services/api';
 
 function SecondPage() {
   const [fishData, setFishData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // 导出相关状态
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
+  const [showExportAlert, setShowExportAlert] = useState(false);
 
   // 获取鱼类数据
   useEffect(() => {
@@ -17,6 +23,25 @@ function SecondPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // 导出处理函数
+  const handleExportFishData = async (format) => {
+    setIsExporting(true);
+    try {
+      await apiService.exportFishData(format);
+      setExportMessage(`鱼类数据已成功导出为 ${format.toUpperCase()} 格式`);
+      setShowExportAlert(true);
+    } catch (error) {
+      setExportMessage('导出失败: ' + error.message);
+      setShowExportAlert(true);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleCloseAlert = () => {
+    setShowExportAlert(false);
+  };
+
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error}</div>;
 
@@ -25,7 +50,28 @@ function SecondPage() {
       <Grid container spacing={3}>
         {/* 鱼类数据图表 */}
         <Grid item xs={12}>
-          <Typography variant="h5" gutterBottom>鱼类数据分析</Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h5">鱼类数据分析</Typography>
+            <Box>
+              <ButtonGroup disabled={isExporting}>
+                <Button 
+                  startIcon={<Download />}
+                  onClick={() => handleExportFishData('csv')}
+                  size="small"
+                >
+                  导出CSV
+                </Button>
+                <Button 
+                  startIcon={<GetApp />}
+                  onClick={() => handleExportFishData('excel')}
+                  size="small"
+                >
+                  导出Excel
+                </Button>
+              </ButtonGroup>
+              {isExporting && <CircularProgress size={20} sx={{ ml: 2 }} />}
+            </Box>
+          </Box>
         </Grid>
 
         {/* 鱼类数量分布图 */}
@@ -106,6 +152,21 @@ function SecondPage() {
           </Paper>
         </Grid>
       </Grid>
+            {/* 导出消息提示 */}
+      <Snackbar
+        open={showExportAlert}
+        autoHideDuration={4000}
+        onClose={handleCloseAlert}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseAlert} 
+          severity={exportMessage.includes('失败') ? 'error' : 'success'}
+          sx={{ width: '100%' }}
+        >
+          {exportMessage}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }

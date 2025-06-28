@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { 
   Container, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, Paper, Typography, Box, Card, 
-  CardContent, Grid ,Select,MenuItem,FormControl, InputLabel
+  CardContent, Grid, Select, MenuItem, FormControl, InputLabel,
+  Button, ButtonGroup, CircularProgress, Alert, Snackbar
 } from '@mui/material';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer 
 } from 'recharts';
+import { Download, GetApp } from '@mui/icons-material';
+import { apiService } from '../services/api';
 
 // 模拟历史水质数据（折线图 + 表格）
 const mockWaterQualityData = [
@@ -146,7 +149,7 @@ const WaterQualityStatusCard = ({ title, value, status, unit }) => {
 function HomePage() {
   const [waterQualityData, setWaterQualityData] = useState([]);
   const [distributionData, setDistributionData] = useState([]);
-  const [currentStatus, setCurrentStatus] = useState({});
+  const [currentStatus, setCurrentStatus] = useState(mockCurrentStatus);
   const [error, setError] = useState(null);
 
   const [locations, setLocations] = useState([]);
@@ -161,6 +164,11 @@ function HomePage() {
   const [newSelectedProvinceBasin, setNewSelectedProvinceBasin] = useState('');
 
   const [newFullWaterQualityData, setNewFullWaterQualityData] = useState([]);
+
+  // 导出相关状态
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
+  const [showExportAlert, setShowExportAlert] = useState(false);
 
   // 获取区域列表
   useEffect(() => {
@@ -334,6 +342,42 @@ useEffect(() => {
   fetchNewFullWaterQualityData();
 }, [newSelectedProvinceBasin, newSelectedDate]);
 
+// 导出处理函数
+const handleExportWaterQuality = async (format) => {
+  setIsExporting(true);
+  try {
+    const [year, month] = selectedDate.split('-');
+    const [province, basin] = selectedProvinceBasin ? selectedProvinceBasin.split('|') : [null, null];
+    
+    await apiService.exportWaterQuality(year, month, province, basin, format);
+    setExportMessage(`水质数据已成功导出为 ${format.toUpperCase()} 格式`);
+    setShowExportAlert(true);
+  } catch (error) {
+    setExportMessage('导出失败: ' + error.message);
+    setShowExportAlert(true);
+  } finally {
+    setIsExporting(false);
+  }
+};
+
+const handleExportComprehensiveReport = async () => {
+  setIsExporting(true);
+  try {
+    const [year, month] = selectedDate.split('-');
+    await apiService.exportComprehensiveReport(year, month);
+    setExportMessage('综合报告已成功导出');
+    setShowExportAlert(true);
+  } catch (error) {
+    setExportMessage('导出失败: ' + error.message);
+    setShowExportAlert(true);
+  } finally {
+    setIsExporting(false);
+  }
+};
+
+const handleCloseAlert = () => {
+  setShowExportAlert(false);
+};
 
   if (error) return <div>Error: {error}</div>;
 
@@ -386,7 +430,36 @@ useEffect(() => {
 
 
 
-      <Typography variant="h5" gutterBottom>水质数据可视化</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h5">水质数据可视化</Typography>
+        <Box>
+          <ButtonGroup disabled={isExporting}>
+            <Button 
+              startIcon={<Download />}
+              onClick={() => handleExportWaterQuality('csv')}
+              size="small"
+            >
+              导出CSV
+            </Button>
+            <Button 
+              startIcon={<GetApp />}
+              onClick={() => handleExportWaterQuality('excel')}
+              size="small"
+            >
+              导出Excel
+            </Button>
+            <Button 
+              startIcon={<GetApp />}
+              onClick={handleExportComprehensiveReport}
+              size="small"
+              variant="outlined"
+            >
+              综合报告
+            </Button>
+          </ButtonGroup>
+          {isExporting && <CircularProgress size={20} sx={{ ml: 2 }} />}
+        </Box>
+      </Box>
       <FormControl fullWidth sx={{ mb: 3 }}>
         <InputLabel>选择时间</InputLabel>
         <Select
@@ -473,7 +546,23 @@ useEffect(() => {
 
       {/* 历史数据表格 */}
       <Box sx={{ mt: 4 }}>
-      <Typography variant="h6" gutterBottom>历史水质数据</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">历史水质数据</Typography>
+        <ButtonGroup size="small" disabled={isExporting}>
+          <Button 
+            startIcon={<Download />}
+            onClick={() => handleExportWaterQuality('csv')}
+          >
+            导出表格CSV
+          </Button>
+          <Button 
+            startIcon={<GetApp />}
+            onClick={() => handleExportWaterQuality('excel')}
+          >
+            导出表格Excel
+          </Button>
+        </ButtonGroup>
+      </Box>
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead>
@@ -523,6 +612,22 @@ useEffect(() => {
        <Box sx={{ marginTop: 18, marginBottom: 18 }}>
           {/* 这里是你的卡片或其他内容 */}
         </Box>
+
+      {/* 导出消息提示 */}
+      <Snackbar
+        open={showExportAlert}
+        autoHideDuration={4000}
+        onClose={handleCloseAlert}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseAlert} 
+          severity={exportMessage.includes('失败') ? 'error' : 'success'}
+          sx={{ width: '100%' }}
+        >
+          {exportMessage}
+        </Alert>
+      </Snackbar>
 
     </Container>
   );

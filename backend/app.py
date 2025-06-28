@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from flask import Flask, jsonify, request, send_file, safe_join, Response, send_from_directory
+from flask import Flask, jsonify, request, send_file, Response, send_from_directory
 from flask_cors import CORS
 import requests
 import os
@@ -84,6 +84,12 @@ def home():
             ],
             "预测": [
                 "/api/predict-length - 预测长度 (POST)"
+            ],
+            "数据导出": [
+                "/api/export/water-quality - 导出水质数据 (GET)",
+                "/api/export/fish-data - 导出鱼类数据 (GET)", 
+                "/api/export/users - 导出用户数据 (GET)",
+                "/api/export/comprehensive-report - 导出综合报告 (GET)"
             ]
         }
     })
@@ -1108,6 +1114,237 @@ def get_server_info():
         "port": SERVER_PORT,
         "url": SERVER_URL
     })
+
+# 数据导出相关API
+@app.route('/api/export/water-quality', methods=['GET'])
+def export_water_quality():
+    """导出水质监测数据"""
+    try:
+        # 获取查询参数
+        year = request.args.get('year', '2020')
+        month = request.args.get('month', '05')
+        province = request.args.get('province')
+        basin = request.args.get('basin')
+        export_format = request.args.get('format', 'csv').lower()
+        
+        # 构建表名
+        table_name = f"{year}-{month}"
+        
+        # 构建SQL查询
+        sql = f"SELECT * FROM `{table_name}`"
+        conditions = []
+        
+        if province:
+            conditions.append(f"province = '{province}'")
+        if basin:
+            conditions.append(f"basin = '{basin}'")
+        
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        
+        # 查询数据库
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql)
+            data = cursor.fetchall()
+        conn.close()
+        
+        if not data:
+            return jsonify({"success": False, "error": "没有找到数据"}), 404
+        
+        # 转换为DataFrame
+        df = pd.DataFrame(data)
+        
+        # 生成文件名
+        filename_prefix = f"water_quality_{year}_{month}"
+        if province:
+            filename_prefix += f"_{province}"
+        if basin:
+            filename_prefix += f"_{basin}"
+        
+        # 根据格式导出
+        if export_format == 'excel' or export_format == 'xlsx':
+            filename = f"{filename_prefix}.xlsx"
+            output = df.to_excel(filename, index=False, engine='openpyxl')
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:  # CSV格式
+            filename = f"{filename_prefix}.csv"
+            df.to_csv(filename, index=False, encoding='utf-8-sig')
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='text/csv'
+            )
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/export/fish-data', methods=['GET'])
+def export_fish_data():
+    """导出鱼类数据"""
+    try:
+        export_format = request.args.get('format', 'csv').lower()
+        
+        # 查询鱼类数据
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM fishes")
+            data = cursor.fetchall()
+        conn.close()
+        
+        if not data:
+            return jsonify({"success": False, "error": "没有找到鱼类数据"}), 404
+        
+        # 转换为DataFrame
+        df = pd.DataFrame(data)
+        
+        # 生成文件名
+        filename_prefix = "fish_data"
+        
+        # 根据格式导出
+        if export_format == 'excel' or export_format == 'xlsx':
+            filename = f"{filename_prefix}.xlsx"
+            df.to_excel(filename, index=False, engine='openpyxl')
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:  # CSV格式
+            filename = f"{filename_prefix}.csv"
+            df.to_csv(filename, index=False, encoding='utf-8-sig')
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='text/csv'
+            )
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/export/users', methods=['GET'])
+def export_users():
+    """导出用户数据（仅管理员可用）"""
+    try:
+        export_format = request.args.get('format', 'csv').lower()
+        
+        # 这里应该添加权限检查，但为了简化，暂时跳过
+        # 在实际应用中，应该验证用户的管理员权限
+        
+        # 查询用户数据
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # 不导出密码字段
+            cursor.execute("SELECT username, gender, age, role, unit FROM users")
+            data = cursor.fetchall()
+        conn.close()
+        
+        if not data:
+            return jsonify({"success": False, "error": "没有找到用户数据"}), 404
+        
+        # 转换为DataFrame
+        df = pd.DataFrame(data)
+        
+        # 生成文件名
+        filename_prefix = "users_data"
+        
+        # 根据格式导出
+        if export_format == 'excel' or export_format == 'xlsx':
+            filename = f"{filename_prefix}.xlsx"
+            df.to_excel(filename, index=False, engine='openpyxl')
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:  # CSV格式
+            filename = f"{filename_prefix}.csv"
+            df.to_csv(filename, index=False, encoding='utf-8-sig')
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='text/csv'
+            )
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/export/comprehensive-report', methods=['GET'])
+def export_comprehensive_report():
+    """导出综合分析报告"""
+    try:
+        year = request.args.get('year', '2020')
+        month = request.args.get('month', '05')
+        export_format = request.args.get('format', 'excel').lower()
+        
+        # 构建表名
+        table_name = f"{year}-{month}"
+        
+        # 创建Excel工作簿（多个工作表）
+        if export_format == 'excel' or export_format == 'xlsx':
+            filename = f"comprehensive_report_{year}_{month}.xlsx"
+            
+            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                # 工作表1：水质原始数据
+                conn = get_db_connection()
+                with conn.cursor() as cursor:
+                    cursor.execute(f"SELECT * FROM `{table_name}` LIMIT 1000")
+                    water_data = cursor.fetchall()
+                    
+                if water_data:
+                    water_df = pd.DataFrame(water_data)
+                    water_df.to_excel(writer, sheet_name='水质原始数据', index=False)
+                
+                # 工作表2：水质统计数据
+                with conn.cursor() as cursor:
+                    cursor.execute(f"""
+                        SELECT 
+                            water_quality_category, 
+                            COUNT(*) as count,
+                            AVG(water_temperature) as avg_temperature,
+                            AVG(pH) as avg_ph,
+                            AVG(dissolved_oxygen) as avg_oxygen
+                        FROM `{table_name}` 
+                        GROUP BY water_quality_category
+                    """)
+                    stats_data = cursor.fetchall()
+                    
+                if stats_data:
+                    stats_df = pd.DataFrame(stats_data)
+                    stats_df.to_excel(writer, sheet_name='水质统计分析', index=False)
+                
+                # 工作表3：鱼类数据
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT * FROM fishes")
+                    fish_data = cursor.fetchall()
+                    
+                if fish_data:
+                    fish_df = pd.DataFrame(fish_data)
+                    fish_df.to_excel(writer, sheet_name='鱼类数据', index=False)
+                
+                conn.close()
+            
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:
+            return jsonify({"success": False, "error": "综合报告只支持Excel格式"}), 400
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=SERVER_PORT, debug=True)

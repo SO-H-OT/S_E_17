@@ -1,11 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Container, Typography, Table, TableHead, TableRow, TableCell, TableBody, Paper, TableContainer, Button, Box } from '@mui/material';
-import { useNavigate } from 'react-router-dom';  // 导入 useNavigate
+import { Container, Typography, Table, TableHead, TableRow, TableCell, TableBody, Paper, TableContainer, Button, Box, ButtonGroup, CircularProgress, Snackbar, Alert } from '@mui/material';
+import { useNavigate } from 'react-router-dom';  // 导入 useNavigate 
+import { Download, GetApp } from '@mui/icons-material';
+import { apiService } from '../services/api';
 
 function UserListPage() {
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
+  
+  // 导出相关状态
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
+  const [showExportAlert, setShowExportAlert] = useState(false);
 
   const navigate = useNavigate();  // 初始化 navigate
 
@@ -70,11 +77,58 @@ function UserListPage() {
     navigate(`/edit-user/${username}`);
   };
 
+  // 导出处理函数
+  const handleExportUsers = async (format) => {
+    const currentUser = JSON.parse(localStorage.getItem('userInfo'));
+    if (!currentUser || currentUser.role !== 'admin') {
+      setExportMessage('只有管理员才能导出用户数据');
+      setShowExportAlert(true);
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await apiService.exportUsers(format);
+      setExportMessage(`用户数据已成功导出为 ${format.toUpperCase()} 格式`);
+      setShowExportAlert(true);
+    } catch (error) {
+      setExportMessage('导出失败: ' + error.message);
+      setShowExportAlert(true);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleCloseAlert = () => {
+    setShowExportAlert(false);
+  };
+
   if (error) return <div>{error}</div>;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>
-      <Typography variant="h4" gutterBottom>用户信息列表</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">用户信息列表</Typography>
+        <Box>
+          <ButtonGroup disabled={isExporting}>
+            <Button 
+              startIcon={<Download />}
+              onClick={() => handleExportUsers('csv')}
+              size="small"
+            >
+              导出CSV
+            </Button>
+            <Button 
+              startIcon={<GetApp />}
+              onClick={() => handleExportUsers('excel')}
+              size="small"
+            >
+              导出Excel
+            </Button>
+          </ButtonGroup>
+          {isExporting && <CircularProgress size={20} sx={{ ml: 2 }} />}
+        </Box>
+      </Box>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -125,7 +179,23 @@ function UserListPage() {
             )}
           </TableBody>
         </Table>
-      </TableContainer>
+              </TableContainer>
+        
+        {/* 导出消息提示 */}
+        <Snackbar
+          open={showExportAlert}
+          autoHideDuration={4000}
+          onClose={handleCloseAlert}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert 
+            onClose={handleCloseAlert} 
+            severity={exportMessage.includes('失败') || exportMessage.includes('只有管理员') ? 'error' : 'success'}
+            sx={{ width: '100%' }}
+          >
+            {exportMessage}
+          </Alert>
+        </Snackbar>
     </Container>
   );
 }

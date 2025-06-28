@@ -231,6 +231,123 @@ export const apiService = {
     } catch (error) {
       throw new Error('获取水质统计数据失败');
     }
+  },
+
+  // 数据导出相关API
+  exportWaterQuality: async (year, month, province, basin, format = 'csv') => {
+    const apiClient = await createApiClient();
+    let params = { year, month, format };
+    if (province) params.province = province;
+    if (basin) params.basin = basin;
+    
+    try {
+      const response = await apiClient.get('/api/export/water-quality', { 
+        params,
+        responseType: 'blob' // 重要：设置响应类型为blob以处理文件下载
+      });
+      
+      // 创建下载链接
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // 生成文件名
+      let filename = `water_quality_${year}_${month}`;
+      if (province) filename += `_${province}`;
+      if (basin) filename += `_${basin}`;
+      filename += format === 'excel' || format === 'xlsx' ? '.xlsx' : '.csv';
+      
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true, message: '导出成功' };
+    } catch (error) {
+      throw new Error('导出水质数据失败');
+    }
+  },
+
+  exportFishData: async (format = 'csv') => {
+    const apiClient = await createApiClient();
+    
+    try {
+      const response = await apiClient.get('/api/export/fish-data', { 
+        params: { format },
+        responseType: 'blob'
+      });
+      
+      // 创建下载链接
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const filename = `fish_data.${format === 'excel' || format === 'xlsx' ? 'xlsx' : 'csv'}`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true, message: '导出成功' };
+    } catch (error) {
+      throw new Error('导出鱼类数据失败');
+    }
+  },
+
+  exportUsers: async (format = 'csv') => {
+    const apiClient = await createApiClient();
+    
+    try {
+      const response = await apiClient.get('/api/export/users', { 
+        params: { format },
+        responseType: 'blob'
+      });
+      
+      // 创建下载链接
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const filename = `users_data.${format === 'excel' || format === 'xlsx' ? 'xlsx' : 'csv'}`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true, message: '导出成功' };
+    } catch (error) {
+      throw new Error('导出用户数据失败');
+    }
+  },
+
+  exportComprehensiveReport: async (year, month) => {
+    const apiClient = await createApiClient();
+    
+    try {
+      const response = await apiClient.get('/api/export/comprehensive-report', { 
+        params: { year, month, format: 'excel' },
+        responseType: 'blob'
+      });
+      
+      // 创建下载链接
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const filename = `comprehensive_report_${year}_${month}.xlsx`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true, message: '导出成功' };
+    } catch (error) {
+      throw new Error('导出综合报告失败');
+    }
   }
 };
 
