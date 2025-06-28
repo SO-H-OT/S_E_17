@@ -368,17 +368,87 @@ def get_weather():
 @app.route('/api/air-quality', methods=['GET'])
 def get_air_quality():
     try:
-        url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+        latitude = request.args.get('latitude')
+        longitude = request.args.get('longitude')
+        
+        if not latitude or not longitude:
+            return jsonify({
+                "success": False,
+                "error": "Missing required parameters: latitude and longitude"
+            }), 400
+        try:
+            lat_list = [float(lat.strip()) for lat in latitude.split(',')]
+            lng_list = [float(lng.strip()) for lng in longitude.split(',')]
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "error": "Invalid coordinate format. Must be comma-separated float values"
+            }), 400
+        if len(lat_list) != len(lng_list):
+            return jsonify({
+                "success": False,
+                "error": "Mismatched number of latitude and longitude values"
+            }), 400
+
+        for lat in lat_list:
+            if not (-90 <= lat <= 90):
+                return jsonify({
+                    "success": False,
+                    "error": f"Invalid latitude value: {lat}. Must be between -90 and 90"
+                }), 400
+        
+        for lng in lng_list:
+            if not (-180 <= lng <= 180):
+                return jsonify({
+                    "success": False,
+                    "error": f"Invalid longitude value: {lng}. Must be between -180 and 180"
+                }), 400
         params = {
-            "latitude": 52.52,
-            "longitude": 13.41,
-            "hourly": ["pm10", "pm2_5", "carbon_monoxide", "nitrogen_dioxide", "sulphur_dioxide", "ozone"]
+            "latitude": latitude,
+            "longitude": longitude,
+            "forecast_days": 4,  # 固定为4天
+            "hourly": "pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone"
         }
+        excluded_params = {'latitude', 'longitude', 'forecast_days'}
+        for key, value in request.args.items():
+            if key not in excluded_params:
+                params[key] = value
+
+        url = "https://air-quality-api.open-meteo.com/v1/air-quality"
         response = requests.get(url, params=params)
+        response.raise_for_status()
         data = response.json()
-        return jsonify({"success": True, "data": data})
+        
+        if len(lat_list) > 1 and isinstance(data.get('hourly'), dict):
+            data['metadata'] = {
+                'locations': [
+                    {'latitude': lat, 'longitude': lng, 'location_id': i}
+                    for i, (lat, lng) in enumerate(zip(lat_list, lng_list))
+                ]
+            }
+        return jsonify({
+            "success": True,
+            "data": data,
+            "params": {
+                "latitude": latitude,
+                "longitude": longitude,
+                "forecast_days": 4
+            }
+        })
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "success": False,
+            "error": f"API request failed: {str(e)}",
+            "details": f"URL: {e.request.url}" if hasattr(e, 'request') else None
+        }), 502
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({
+            "success": False,
+            "error": f"Unexpected error: {str(e)}"
+        }), 500
+
+
 
 @app.route('/api/video/<filename>')
 def get_video(filename):
@@ -1319,6 +1389,80 @@ def parse_weather_data(amap_data, extensions):
             } for cast in forecast.get("casts", [])
         ]
     }
+
+@app.route('/api/geocode/city-lnglat', methods=['GET'])
+def get_city_lnglat():
+    try:
+        key = request.args.get('key', '').strip()
+        city_code = request.args.get('city_code', '').strip()
+
+        if not key or not city_code:
+            app.logger.error(f"参数验证失败: key={key}, city_code={city_code}")
+            return jsonify({
+                "success": False,
+                "error": "参数key和city_code必须提供",
+                "received": request.args.to_dict()
+            }), 400
+
+        # 调用高德行政区查询API
+        amap_url = "https://restapi.amap.com/v3/config/district"
+        try:
+            response = requests.get(
+                amap_url,
+                params={
+                    'key': key,
+                    'keywords': city_code,
+                    'subdistrict': 0,
+                    'extensions': 'base'
+                },
+                timeout=5
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            app.logger.error(f"高德API请求失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": "地图服务请求失败",
+                "details": str(e)
+            }), 502
+
+        if data.get('status') != '1' or not data.get('districts'):
+            app.logger.error(f"高德API错误响应: {data}")
+            return jsonify({
+                "success": False,
+                "error": data.get('info', '行政区查询服务错误'),
+                "amap_response": data
+            }), 400
+
+        district = data['districts'][0]
+        # 中心点格式为 "经度,纬度"
+        center = district.get('center', '')
+        if not center or ',' not in center:
+            return jsonify({
+                "success": False,
+                "error": "未找到该城市的经纬度信息"
+            }), 404
+
+        lng, lat = center.split(',')
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "city_code": city_code,
+                "name": district.get('name', ''),
+                "longitude": float(lng),
+                "latitude": float(lat)
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"未处理的异常: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": "服务器内部错误",
+            "exception": str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=SERVER_PORT, debug=True)
