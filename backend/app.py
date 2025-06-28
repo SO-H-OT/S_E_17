@@ -103,6 +103,7 @@ def home():
             "数据导出": [
                 "/api/export/water-quality - 导出水质数据 (GET)",
                 "/api/export/fish-data - 导出鱼类数据 (GET)", 
+                "/api/export/species-data - 导出特定品种鱼类数据 (GET)",
                 "/api/export/users - 导出用户数据 (GET)",
                 "/api/export/comprehensive-report - 导出综合报告 (GET)"
             ],
@@ -1791,6 +1792,55 @@ def export_fish_data():
         
         # 生成文件名
         filename_prefix = "fish_data"
+        
+        # 根据格式导出
+        if export_format == 'excel' or export_format == 'xlsx':
+            filename = f"{filename_prefix}.xlsx"
+            df.to_excel(filename, index=False, engine='openpyxl')
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:  # CSV格式
+            filename = f"{filename_prefix}.csv"
+            df.to_csv(filename, index=False, encoding='utf-8-sig')
+            return send_file(
+                filename,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='text/csv'
+            )
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/export/species-data', methods=['GET'])
+def export_species_data():
+    """导出特定品种的鱼类数据"""
+    try:
+        species = request.args.get('species')
+        export_format = request.args.get('format', 'csv').lower()
+        
+        if not species:
+            return jsonify({"success": False, "error": "请指定鱼类品种"}), 400
+        
+        # 查询特定品种的鱼类数据
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM fishes WHERE species = %s", (species,))
+            data = cursor.fetchall()
+        conn.close()
+        
+        if not data:
+            return jsonify({"success": False, "error": f"没有找到{species}的数据"}), 404
+        
+        # 转换为DataFrame
+        df = pd.DataFrame(data)
+        
+        # 生成文件名
+        filename_prefix = f"{species}_data"
         
         # 根据格式导出
         if export_format == 'excel' or export_format == 'xlsx':

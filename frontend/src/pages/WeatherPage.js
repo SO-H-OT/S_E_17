@@ -2,28 +2,131 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Container, Paper, Typography, Box, Grid, CircularProgress, Button,
   TextField, InputAdornment, IconButton, Table, TableBody, TableCell, TableContainer, 
-  TableHead, TableRow
+  TableHead, TableRow, Card, CardContent, CardHeader, Chip
 } from '@mui/material';
+import { styled, keyframes } from '@mui/material/styles';
 import SearchIcon from '@mui/icons-material/Search';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import axios from 'axios';
 import AMapLoader from '@amap/amap-jsapi-loader';
 
+const fadeIn = keyframes`
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+`;
+
+const slideInLeft = keyframes`
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+`;
+
+const pulse = keyframes`
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+`;
+
+const GlassCard = styled(Card)(({ theme }) => ({
+  background: 'rgba(255, 255, 255, 0.7)',
+  backdropFilter: 'blur(20px)',
+  border: '1px solid rgba(255, 255, 255, 0.18)',
+  borderRadius: '16px',
+  transition: 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+  animation: `${fadeIn} 0.6s ease-out`,
+  '&:hover': {
+    transform: 'translateY(-8px)',
+    boxShadow: '0 20px 40px rgba(0, 0, 0, 0.1)',
+    background: 'rgba(255, 255, 255, 0.8)',
+  },
+}));
+
+const AppleButton = styled(Button)(({ theme, variant }) => ({
+  borderRadius: '12px',
+  textTransform: 'none',
+  fontWeight: 600,
+  padding: '12px 24px',
+  transition: 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+  ...(variant === 'primary' && {
+    background: 'linear-gradient(135deg, #007AFF 0%, #0051D5 100%)',
+    color: 'white',
+    border: 'none',
+    '&:hover': {
+      background: 'linear-gradient(135deg, #0051D5 0%, #003D9F 100%)',
+      transform: 'translateY(-2px)',
+      boxShadow: '0 8px 25px rgba(0, 122, 255, 0.3)',
+    },
+  }),
+  ...(variant === 'success' && {
+    background: 'linear-gradient(135deg, #34C759 0%, #28A745 100%)',
+    color: 'white',
+    border: 'none',
+    '&:hover': {
+      background: 'linear-gradient(135deg, #28A745 0%, #1F7A32 100%)',
+      transform: 'translateY(-2px)',
+      boxShadow: '0 8px 25px rgba(52, 199, 89, 0.3)',
+    },
+  }),
+}));
+
+const StatusChip = styled(Chip)(({ status }) => ({
+  borderRadius: '20px',
+  fontWeight: 600,
+  ...(status === 'good' && {
+    background: 'linear-gradient(135deg, #34C759 0%, #28A745 100%)',
+    color: 'white',
+  }),
+  ...(status === 'warning' && {
+    background: 'linear-gradient(135deg, #FF9500 0%, #FF6D00 100%)',
+    color: 'white',
+  }),
+  ...(status === 'danger' && {
+    background: 'linear-gradient(135deg, #FF3B30 0%, #D70015 100%)',
+    color: 'white',
+  }),
+}));
+
 const AirQualityIndicator = ({ value, type }) => {
-  let color = '#4CAF50'; // 绿色-良好
+  let status = 'good';
   let level = '优';
 
   if (type === 'pm2_5') {
-    if (value > 75) { color = '#F44336'; level = '严重污染'; }
-    else if (value > 50) { color = '#FF9800'; level = '中度污染'; }
-  } 
+    if (value > 75) { status = 'danger'; level = '严重污染'; }
+    else if (value > 50) { status = 'warning'; level = '中度污染'; }
+    else if (value > 35) { status = 'warning'; level = '轻度污染'; }
+  } else if (type === 'pm10') {
+    if (value > 150) { status = 'danger'; level = '严重污染'; }
+    else if (value > 100) { status = 'warning'; level = '中度污染'; }
+    else if (value > 75) { status = 'warning'; level = '轻度污染'; }
+  }
 
   return (
-    <Box display="flex" alignItems="center">
-      <Box width={20} height={20} bgcolor={color} borderRadius="50%" mr={1}/>
-      <Typography variant="body2">
-        {value} ({level})
+    <Box display="flex" alignItems="center" gap={1}>
+      <Typography variant="body2" sx={{ fontWeight: 600, color: '#1D1D1F' }}>
+        {value}
       </Typography>
+      <StatusChip 
+        label={level}
+        size="small"
+        status={status}
+      />
     </Box>
   );
 };
@@ -287,115 +390,262 @@ const fetchAirQualityData = async (lat, lng) => {
   }, []);
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        天气预报 
-      </Typography>
+    <Box sx={{ 
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f1f5f9 100%)',
+      position: 'relative',
+      '&::before': {
+        content: '""',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'url("data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%2348cae4" fill-opacity="0.04"%3E%3Ccircle cx="30" cy="30" r="2"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
+        opacity: 0.8,
+      }
+    }}>
+      <Container maxWidth="lg" sx={{ pt: 4, pb: 6, position: 'relative', zIndex: 1 }}>
+        <Typography variant="h4" sx={{ 
+          mb: 4,
+          fontWeight: 800,
+          background: 'linear-gradient(135deg, #0c4a6e 0%, #155e75 100%)',
+          backgroundClip: 'text',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          textAlign: 'center',
+          animation: `${fadeIn} 0.8s ease-out`,
+        }}>
+          天气与空气质量监测
+        </Typography>
 
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={9}>
-            <TextField
-              fullWidth
-              label="输入城市或地区（如：北京市朝阳区）"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              error={!!error}
-              helperText={error}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton 
-                      onClick={handleSearch}
-                      disabled={loading}
-                    >
-                      <SearchIcon />
-                    </IconButton>
-                  </InputAdornment>
-                )
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={handleSearch}
-              sx={{ height: '56px' }}
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} /> : '查询天气'}
-            </Button>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      <Grid item xs={12}>
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" gutterBottom>城市位置</Typography>
-          <Box sx={{ 
-            width: '100%', 
-            height: 400,
-            position: 'relative',
-            border: '1px solid #eee',
-            backgroundColor: '#fafafa'
-          }}>
-            {mapLoading && (
-              <Box sx={{ 
-                position: 'absolute', 
-                top: 0, 
-                left: 0, 
-                right: 0, 
-                bottom: 0, 
-                display: 'flex', 
-                justifyContent: 'center', 
-                alignItems: 'center'
+        {/* 搜索区域 */}
+        <GlassCard sx={{ mb: 4, animation: `${slideInLeft} 0.8s ease-out` }}>
+          <CardHeader
+            title={
+              <Typography variant="h6" sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
               }}>
-                <CircularProgress />
-              </Box>
-            )}
-            <div 
-              ref={mapRef} 
-              style={{ 
-                width: '100%',
-                height: '100%',
-                opacity: mapLoading ? 0 : 1,
-                transition: 'opacity 0.3s'
-              }} 
-            />
-          </Box>
-        </Paper>
-      </Grid>
-
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : weatherData && (
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" gutterBottom>近期天气详情</Typography>
-              <Grid container spacing={2}>
-                {weatherData.map((day) => (
-                  <Grid item xs={12} sm={6} md={3} key={day.date}>
-                    <Box sx={{ 
-                      p: 2, 
-                      border: '1px solid #eee', 
-                      borderRadius: 1,
-                      textAlign: 'center'
-                    }}>
-                      <Typography variant="subtitle1">{day.date}</Typography>
-                      <Typography>白天: {day.dayWeather} {day.dayTemp}°C</Typography>
-                      <Typography>夜间: {day.nightWeather} {day.nightTemp}°C</Typography>
-                      <Typography>风向: {day.dayWind}</Typography>
-                    </Box>
-                  </Grid>
-                ))}
+                搜索位置
+              </Typography>
+            }
+          />
+          <CardContent>
+            <Grid container spacing={3} alignItems="center">
+              <Grid item xs={12} md={8}>
+                <TextField
+                  fullWidth
+                  label="输入城市或地区（如：北京市朝阳区）"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  error={!!error}
+                  helperText={error}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                      background: 'rgba(255, 255, 255, 0.8)',
+                      backdropFilter: 'blur(10px)',
+                      '& fieldset': {
+                        border: '1px solid rgba(0, 122, 255, 0.3)',
+                      },
+                      '&:hover fieldset': {
+                        border: '1px solid rgba(0, 122, 255, 0.5)',
+                      },
+                      '&.Mui-focused fieldset': {
+                        border: '2px solid #007AFF',
+                      },
+                    },
+                    '& .MuiInputLabel-root': {
+                      color: '#8E8E93',
+                      fontWeight: 600,
+                    },
+                  }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton 
+                          onClick={handleSearch}
+                          disabled={loading}
+                          sx={{
+                            color: '#007AFF',
+                            '&:hover': {
+                              background: 'rgba(0, 122, 255, 0.1)',
+                            },
+                          }}
+                        >
+                          <SearchIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    )
+                  }}
+                />
               </Grid>
-            </Paper>
-          </Grid>
+              <Grid item xs={12} md={4}>
+                <AppleButton
+                  fullWidth
+                  variant="primary"
+                  onClick={handleSearch}
+                  disabled={loading}
+                  sx={{ height: '56px' }}
+                >
+                  {loading ? <CircularProgress size={24} color="inherit" /> : '查询天气'}
+                </AppleButton>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </GlassCard>
+
+        {/* 地图区域 */}
+        <GlassCard sx={{ mb: 4, animation: `${fadeIn} 1s ease-out` }}>
+          <CardHeader
+            title={
+              <Typography variant="h6" sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #34C759 0%, #007AFF 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                城市位置
+              </Typography>
+            }
+            action={
+              <StatusChip 
+                label={location.name}
+                size="small"
+                status="good"
+              />
+            }
+          />
+          <CardContent>
+            <Box sx={{ 
+              width: '100%', 
+              height: 400,
+              position: 'relative',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              border: '1px solid rgba(52, 199, 89, 0.3)',
+              backgroundColor: '#fafafa'
+            }}>
+              {mapLoading && (
+                <Box sx={{ 
+                  position: 'absolute', 
+                  top: 0, 
+                  left: 0, 
+                  right: 0, 
+                  bottom: 0, 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center',
+                  background: 'rgba(255, 255, 255, 0.8)',
+                  backdropFilter: 'blur(10px)',
+                  zIndex: 10,
+                }}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <CircularProgress sx={{ color: '#34C759', mb: 2 }} />
+                    <Typography variant="body2" sx={{ color: '#8E8E93', fontWeight: 600 }}>
+                      加载地图中...
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+              <div 
+                ref={mapRef} 
+                style={{ 
+                  width: '100%',
+                  height: '100%',
+                  opacity: mapLoading ? 0 : 1,
+                  transition: 'opacity 0.3s ease'
+                }} 
+              />
+            </Box>
+          </CardContent>
+        </GlassCard>
+
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+            <Box sx={{ textAlign: 'center' }}>
+              <CircularProgress sx={{ color: 'white', mb: 2 }} />
+              <Typography variant="body1" sx={{ color: 'white', fontWeight: 600 }}>
+                正在加载天气数据...
+              </Typography>
+            </Box>
+          </Box>
+        ) : weatherData && (
+          <Grid container spacing={3}>
+            {/* 天气卡片区域 */}
+            <Grid item xs={12}>
+              <GlassCard sx={{ mb: 4, animation: `${slideInLeft} 1.2s ease-out` }}>
+                <CardHeader
+                  title={
+                    <Typography variant="h6" sx={{ 
+                      fontWeight: 700,
+                      background: 'linear-gradient(135deg, #FF9500 0%, #FF3B30 100%)',
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}>
+                      近期天气详情
+                    </Typography>
+                  }
+                />
+                <CardContent>
+                  <Grid container spacing={3}>
+                    {weatherData.map((day, index) => (
+                      <Grid item xs={12} sm={6} md={3} key={day.date}>
+                        <GlassCard sx={{ 
+                          textAlign: 'center',
+                          background: 'linear-gradient(135deg, rgba(255, 149, 0, 0.1) 0%, rgba(255, 59, 48, 0.1) 100%)',
+                          border: '1px solid rgba(255, 149, 0, 0.3)',
+                          animation: `${fadeIn} ${1 + index * 0.1}s ease-out`,
+                          '&:hover': {
+                            transform: 'translateY(-4px) scale(1.02)',
+                            boxShadow: '0 12px 30px rgba(255, 149, 0, 0.2)',
+                          }
+                        }}>
+                          <CardContent>
+                            <Typography variant="subtitle1" sx={{ 
+                              fontWeight: 700, 
+                              color: '#FF9500',
+                              mb: 2 
+                            }}>
+                              {day.date}
+                            </Typography>
+                            <Box sx={{ mb: 1 }}>
+                              <Typography variant="body2" sx={{ color: '#1D1D1F', fontWeight: 600 }}>
+                                白天: {day.dayWeather}
+                              </Typography>
+                              <Typography variant="h6" sx={{ color: '#FF3B30', fontWeight: 700 }}>
+                                {day.dayTemp}°C
+                              </Typography>
+                            </Box>
+                            <Box sx={{ mb: 1 }}>
+                              <Typography variant="body2" sx={{ color: '#1D1D1F', fontWeight: 600 }}>
+                                夜间: {day.nightWeather}
+                              </Typography>
+                              <Typography variant="h6" sx={{ color: '#007AFF', fontWeight: 700 }}>
+                                {day.nightTemp}°C
+                              </Typography>
+                            </Box>
+                            <StatusChip 
+                              label={day.dayWind}
+                              size="small"
+                              status="warning"
+                            />
+                          </CardContent>
+                        </GlassCard>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </CardContent>
+              </GlassCard>
+            </Grid>
 
   <Grid item xs={12}>
   <Paper sx={{ p: 2 }}>
@@ -513,7 +763,8 @@ const fetchAirQualityData = async (lat, lng) => {
   <Grid item xs={12} sx={{ height: 80 }} />
   </Grid>
       )}
-    </Container>
+      </Container>
+    </Box>
   );
 }
 

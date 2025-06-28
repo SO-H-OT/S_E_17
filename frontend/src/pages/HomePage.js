@@ -5,8 +5,9 @@ import {
   CardContent, Grid, Select, MenuItem, FormControl, InputLabel,
   Button, ButtonGroup, CircularProgress, Alert, Snackbar,
   Chip, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Fab
+  TextField, Fab, CardHeader
 } from '@mui/material';
+import { styled, keyframes } from '@mui/material/styles';
 
 import SettingsIcon from '@mui/icons-material/Settings';
 import SaveIcon from '@mui/icons-material/Save';
@@ -18,6 +19,121 @@ import {
 import { Download, GetApp, Image as ImageIcon } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { exportChart, exportAllChartsInPage } from '../utils/chartExport';
+
+const fadeIn = keyframes`
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+`;
+
+const slideInLeft = keyframes`
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+`;
+
+const pulse = keyframes`
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+`;
+
+const GlassCard = styled(Card)(({ theme }) => ({
+  background: 'rgba(255, 255, 255, 0.7)',
+  backdropFilter: 'blur(20px)',
+  border: '1px solid rgba(255, 255, 255, 0.18)',
+  borderRadius: '16px',
+  transition: 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+  animation: `${fadeIn} 0.6s ease-out`,
+  '&:hover': {
+    transform: 'translateY(-8px)',
+    boxShadow: '0 20px 40px rgba(0, 0, 0, 0.1)',
+    background: 'rgba(255, 255, 255, 0.8)',
+  },
+}));
+
+const AppleButton = styled(Button)(({ theme, variant }) => ({
+  borderRadius: '12px',
+  textTransform: 'none',
+  fontWeight: 600,
+  padding: '8px 20px',
+  transition: 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+  ...(variant === 'primary' && {
+    background: 'linear-gradient(135deg, #007AFF 0%, #0051D5 100%)',
+    color: 'white',
+    border: 'none',
+    '&:hover': {
+      background: 'linear-gradient(135deg, #0051D5 0%, #003D9F 100%)',
+      transform: 'translateY(-2px)',
+      boxShadow: '0 8px 25px rgba(0, 122, 255, 0.3)',
+    },
+  }),
+  ...(variant === 'success' && {
+    background: 'linear-gradient(135deg, #34C759 0%, #28A745 100%)',
+    color: 'white',
+    border: 'none',
+    '&:hover': {
+      background: 'linear-gradient(135deg, #28A745 0%, #1F7A32 100%)',
+      transform: 'translateY(-2px)',
+      boxShadow: '0 8px 25px rgba(52, 199, 89, 0.3)',
+    },
+  }),
+  ...(variant === 'warning' && {
+    background: 'linear-gradient(135deg, #FF9500 0%, #FF6D00 100%)',
+    color: 'white',
+    border: 'none',
+    '&:hover': {
+      background: 'linear-gradient(135deg, #FF6D00 0%, #E65100 100%)',
+      transform: 'translateY(-2px)',
+      boxShadow: '0 8px 25px rgba(255, 149, 0, 0.3)',
+    },
+  }),
+  ...(variant === 'outlined' && {
+    background: 'rgba(255, 255, 255, 0.8)',
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(0, 122, 255, 0.3)',
+    color: '#007AFF',
+    '&:hover': {
+      background: 'rgba(0, 122, 255, 0.1)',
+      transform: 'translateY(-2px)',
+      boxShadow: '0 8px 25px rgba(0, 122, 255, 0.15)',
+    },
+  }),
+}));
+
+const StatusChip = styled(Chip)(({ status }) => ({
+  borderRadius: '20px',
+  fontWeight: 600,
+  animation: `${pulse} 2s infinite`,
+  ...(status === 'good' && {
+    background: 'linear-gradient(135deg, #34C759 0%, #28A745 100%)',
+    color: 'white',
+  }),
+  ...(status === 'warning' && {
+    background: 'linear-gradient(135deg, #FF9500 0%, #FF6D00 100%)',
+    color: 'white',
+  }),
+  ...(status === 'danger' && {
+    background: 'linear-gradient(135deg, #FF3B30 0%, #D70015 100%)',
+    color: 'white',
+  }),
+}));
 
 // 模拟历史水质数据（折线图 + 表格）
 const mockWaterQualityData = [
@@ -44,69 +160,80 @@ const mockCurrentStatus = {
   temperature: { value: 25.3, status: 'good', unit: '°C' }, // 温度指标
 };
 
-// 水质数据图表组件（保留原样）
 const WaterQualityChart = ({ data }) => {
   const handleExportChart = () => {
     exportChart('water-quality-trend-chart', '水质质量趋势图', 'png');
   };
 
   return (
-    <Box id="water-quality-trend-chart" className="chart-container" sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, height: 350 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">水质质量趋势</Typography>
-        <Button
-          size="small"
-          startIcon={<ImageIcon />}
-          onClick={handleExportChart}
-          variant="outlined"
-        >
-          导出图表
-        </Button>
-      </Box>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="date" />
-          <YAxis />
-          <Tooltip
-            content={({ payload }) => {
-              if (payload && payload.length) {
-                const { section_name, dissolved_oxygen, ammonia_nitrogen, ph, total_phosphorus, temperature } = payload[0].payload;
-                return (
-                  <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 2, boxShadow: 3 }}>
-                    
-                    <Box sx={{ mt: 1 }}>
-                      <Typography variant="body2" sx={{ color: '#8884d8' }}><strong>溶解氧:</strong> {dissolved_oxygen}</Typography>
-                      <Typography variant="body2" sx={{ color: '#82ca9d' }}><strong>氨氮:</strong> {ammonia_nitrogen}</Typography>
-                      <Typography variant="body2" sx={{ color: '#ff7300' }}><strong>pH值:</strong> {ph}</Typography>
-                      <Typography variant="body2" sx={{ color: '#ffbb28' }}><strong>总磷:</strong> {total_phosphorus}</Typography>
-                      <Typography variant="body2" sx={{ color: '#ff8042' }}><strong>水温:</strong> {temperature}</Typography>
-                    </Box>
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" sx={{ fontStyle: 'italic' }}><strong>监测点:</strong> {section_name}</Typography>
-                    </Box>
-                  </Box>
-                );
-              }
-              return null;
-            }}
-          />
-          <Legend />
-          <Line type="monotone" dataKey="dissolved_oxygen" stroke="#8884d8" name="溶解氧" />
-          <Line type="monotone" dataKey="ammonia_nitrogen" stroke="#82ca9d" name="氨氮" />
-          <Line type="monotone" dataKey="ph" stroke="#ff7300" name="pH值" />
-          <Line type="monotone" dataKey="total_phosphorus" stroke="#ffbb28" name="总磷" />
-          <Line type="monotone" dataKey="temperature" stroke="#ff8042" name="水温" />
-        </LineChart>
-      </ResponsiveContainer>
-    </Box>
+    <GlassCard id="water-quality-trend-chart" className="chart-container" sx={{ p: 3, height: 400 }}>
+      <CardHeader
+        title={
+          <Typography variant="h6" sx={{ 
+            fontWeight: 700, 
+            background: 'linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}>
+            水质质量趋势
+          </Typography>
+        }
+        action={
+          <AppleButton
+            size="small"
+            startIcon={<ImageIcon />}
+            onClick={handleExportChart}
+            variant="outlined"
+          >
+            导出图表
+          </AppleButton>
+        }
+        sx={{ pb: 1 }}
+      />
+      <CardContent sx={{ pt: 0, height: 'calc(100% - 80px)' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0, 122, 255, 0.1)" />
+            <XAxis dataKey="date" stroke="#8E8E93" />
+            <YAxis stroke="#8E8E93" />
+            <Tooltip
+              content={({ payload }) => {
+                if (payload && payload.length) {
+                  const { section_name, dissolved_oxygen, ammonia_nitrogen, ph, total_phosphorus, temperature } = payload[0].payload;
+                  return (
+                    <GlassCard sx={{ p: 2, minWidth: 200 }}>
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="body2" sx={{ color: '#007AFF', fontWeight: 600 }}><strong>溶解氧:</strong> {dissolved_oxygen}</Typography>
+                        <Typography variant="body2" sx={{ color: '#34C759', fontWeight: 600 }}><strong>氨氮:</strong> {ammonia_nitrogen}</Typography>
+                        <Typography variant="body2" sx={{ color: '#FF9500', fontWeight: 600 }}><strong>pH值:</strong> {ph}</Typography>
+                        <Typography variant="body2" sx={{ color: '#FF6B6B', fontWeight: 600 }}><strong>总磷:</strong> {total_phosphorus}</Typography>
+                        <Typography variant="body2" sx={{ color: '#5856D6', fontWeight: 600 }}><strong>水温:</strong> {temperature}</Typography>
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#8E8E93' }}><strong>监测点:</strong> {section_name}</Typography>
+                      </Box>
+                    </GlassCard>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Legend />
+            <Line type="monotone" dataKey="dissolved_oxygen" stroke="#007AFF" strokeWidth={3} name="溶解氧" />
+            <Line type="monotone" dataKey="ammonia_nitrogen" stroke="#34C759" strokeWidth={3} name="氨氮" />
+            <Line type="monotone" dataKey="ph" stroke="#FF9500" strokeWidth={3} name="pH值" />
+            <Line type="monotone" dataKey="total_phosphorus" stroke="#FF6B6B" strokeWidth={3} name="总磷" />
+            <Line type="monotone" dataKey="temperature" stroke="#5856D6" strokeWidth={3} name="水温" />
+          </LineChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </GlassCard>
   );
 };
 
-
-// 水质分布饼图组件（保留原样）
 const WaterQualityDistribution = ({ data }) => {
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#A28FD0'];
+  const COLORS = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#5856D6', '#AF52DE'];
 
   // 直接过滤掉 value 为 0 的项
   const filteredData = data.filter(entry => entry.value > 0);
@@ -116,68 +243,141 @@ const WaterQualityDistribution = ({ data }) => {
   };
 
   return (
-    <Box id="water-quality-distribution-chart" className="chart-container" sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, height: 350 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">水质分布</Typography>
-        <Button
-          size="small"
-          startIcon={<ImageIcon />}
-          onClick={handleExportChart}
-          variant="outlined"
-        >
-          导出图表
-        </Button>
-      </Box>
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={filteredData}
-            cx="50%"
-            cy="50%"
-            labelLine
-            outerRadius={100}
-            fill="#8884d8"
-            dataKey="value"
-            nameKey="category"
-            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+    <GlassCard id="water-quality-distribution-chart" className="chart-container" sx={{ p: 3, height: 400 }}>
+      <CardHeader
+        title={
+          <Typography variant="h6" sx={{ 
+            fontWeight: 700, 
+            background: 'linear-gradient(135deg, #34C759 0%, #007AFF 100%)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}>
+            水质分布
+          </Typography>
+        }
+        action={
+          <AppleButton
+            size="small"
+            startIcon={<ImageIcon />}
+            onClick={handleExportChart}
+            variant="outlined"
           >
-            {filteredData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
-    </Box>
+            导出图表
+          </AppleButton>
+        }
+        sx={{ pb: 1 }}
+      />
+      <CardContent sx={{ pt: 0, height: 'calc(100% - 80px)' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={filteredData}
+              cx="50%"
+              cy="50%"
+              labelLine
+              outerRadius={100}
+              fill="#8884d8"
+              dataKey="value"
+              nameKey="category"
+              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+            >
+              {filteredData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </GlassCard>
   );
 };
 
-
-// 水质状态卡片组件（保留原样）
 const WaterQualityStatusCard = ({ title, value, status, unit }) => {
-  const getStatusColor = (status) => {
+  const getStatusInfo = (status) => {
     switch (status) {
-      case 'good': return '#4caf50';
-      case 'warning': return '#ff9800';
-      case 'danger': return '#f44336';
-      default: return '#2196f3';
+      case 'good': 
+        return { 
+          color: '#34C759', 
+          background: 'linear-gradient(135deg, #34C759 0%, #28A745 100%)',
+          label: '良好',
+          icon: '✓'
+        };
+      case 'warning': 
+        return { 
+          color: '#FF9500', 
+          background: 'linear-gradient(135deg, #FF9500 0%, #FF6D00 100%)',
+          label: '警告',
+          icon: '⚠'
+        };
+      case 'danger': 
+        return { 
+          color: '#FF3B30', 
+          background: 'linear-gradient(135deg, #FF3B30 0%, #D70015 100%)',
+          label: '危险',
+          icon: '✗'
+        };
+      default: 
+        return { 
+          color: '#007AFF', 
+          background: 'linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
+          label: '正常',
+          icon: 'ℹ'
+        };
     }
   };
 
+  const statusInfo = getStatusInfo(status);
+
   return (
-    
-    <Card sx={{ minWidth: 200, mb: 2 }}>
-      <CardContent>
-        <Typography variant="h6" gutterBottom>{title}</Typography>
-        <Typography variant="h4" sx={{ color: getStatusColor(status) }}>
+    <GlassCard sx={{ 
+      minWidth: 200, 
+      height: 140,
+      position: 'relative',
+      overflow: 'hidden',
+      animation: `${slideInLeft} 0.6s ease-out`,
+    }}>
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: 60,
+          height: 60,
+          background: statusInfo.background,
+          borderRadius: '0 0 0 60px',
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'flex-start',
+          pl: 2,
+          pb: 1,
+        }}
+      >
+        <Typography variant="h6" sx={{ color: 'white', fontWeight: 700 }}>
+          {statusInfo.icon}
+        </Typography>
+      </Box>
+      <CardContent sx={{ pt: 2 }}>
+        <Typography variant="body2" sx={{ color: '#8E8E93', fontWeight: 600, mb: 1 }}>
+          {title}
+        </Typography>
+        <Typography variant="h4" sx={{ 
+          color: statusInfo.color, 
+          fontWeight: 700,
+          mb: 1,
+          textShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        }}>
           {value} {unit}
         </Typography>
-        <Typography variant="body2" sx={{ color: getStatusColor(status) }}>
-          状态: {status === 'good' ? '良好' : status === 'warning' ? '警告' : '危险'}
-        </Typography>
+        <StatusChip 
+          label={statusInfo.label}
+          size="small"
+          status={status}
+        />
       </CardContent>
-    </Card>
+    </GlassCard>
   );
 };
 
@@ -910,387 +1110,690 @@ function HomePage() {
   if (error) return <div>Error: {error}</div>;
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 2, mb: 4 }}>
-      {/* 标题和管理员设置按钮 */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          智慧海洋牧场数据中心
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="contained"
-            color="success"
-            onClick={refreshAndCheckLatestData}
-            startIcon={isExporting ? <CircularProgress size={16} color="inherit" /> : <RestoreIcon />}
-            disabled={isExporting}
-            size="small"
-          >
-            实时检测
-          </Button>
-          {userRole === 'admin' && (
-            <Button
-              variant="outlined"
-              startIcon={<SettingsIcon />}
-              onClick={openStandardsDialog}
-              size="small"
+    <Box sx={{ 
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #f8fafc 0%, #e0f2fe 50%, #f1f5f9 100%)',
+      position: 'relative',
+      '&::before': {
+        content: '""',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'url("data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%2338bdf8" fill-opacity="0.04"%3E%3Ccircle cx="30" cy="30" r="2"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
+        opacity: 0.7,
+      }
+    }}>
+      <Container maxWidth="xl" sx={{ pt: 4, pb: 6, position: 'relative', zIndex: 1 }}>
+        {/* 标题和管理员设置按钮 */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+          <Typography variant="h4" component="h1" sx={{ 
+            fontWeight: 800,
+            background: 'linear-gradient(135deg, #0f172a 0%, #0369a1 100%)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            mb: 0,
+            animation: `${fadeIn} 0.8s ease-out`,
+          }}>
+            智慧海洋牧场数据中心
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <AppleButton
+              variant="success"
+              onClick={refreshAndCheckLatestData}
+              startIcon={isExporting ? <CircularProgress size={16} color="inherit" /> : <RestoreIcon />}
+              disabled={isExporting}
             >
-              设置水质标准
-            </Button>
-          )}
-        </Box>
-      </Box>
-
-      {/* 管理员浮动设置按钮 */}
-      {userRole === 'admin' && (
-        <Fab
-          color="primary"
-          aria-label="设置水质标准"
-          onClick={openStandardsDialog}
-          sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}
-        >
-          <SettingsIcon />
-        </Fab>
-      )}
-
-      {/* 异常警报区域 */}
-      {alertMessages.length > 0 && (
-        <Box sx={{ mb: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" color="error">
-              异常警报 ({alertMessages.length})
-            </Typography>
-            <ButtonGroup size="small">
-              <Button
+              实时检测
+            </AppleButton>
+            {userRole === 'admin' && (
+              <AppleButton
                 variant="outlined"
-                onClick={refreshAndCheckLatestData}
-                startIcon={<CircularProgress size={16} sx={{ display: isExporting ? 'block' : 'none' }} />}
-                disabled={isExporting}
+                startIcon={<SettingsIcon />}
+                onClick={openStandardsDialog}
               >
-                刷新检测
-              </Button>
-              <Button
-                variant="outlined"
-                onClick={clearAllAlerts}
-              >
-                清除警报
-              </Button>
-            </ButtonGroup>
+                设置水质标准
+              </AppleButton>
+            )}
           </Box>
+        </Box>
 
-          <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
-            {alertMessages.slice(0, 10).map((alert) => (
-              <Alert
-                key={alert.id}
-                severity={alert.status === 'danger' ? 'error' : 'warning'}
-                sx={{ mb: 1, cursor: 'pointer' }}
-                onClick={() => viewAlertDetails(alert)}
-                action={
-                  <Button
-                    color="inherit"
+        {/* 管理员浮动设置按钮 */}
+        {userRole === 'admin' && (
+          <Fab
+            aria-label="设置水质标准"
+            onClick={openStandardsDialog}
+            sx={{ 
+              position: 'fixed', 
+              bottom: 24, 
+              right: 24, 
+              zIndex: 1000,
+              background: 'linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
+              boxShadow: '0 8px 25px rgba(0, 122, 255, 0.4)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #0051D5 0%, #4C44B8 100%)',
+                transform: 'scale(1.1)',
+                boxShadow: '0 12px 35px rgba(0, 122, 255, 0.6)',
+              },
+              transition: 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+            }}
+          >
+            <SettingsIcon sx={{ color: 'white' }} />
+          </Fab>
+        )}
+
+        {/* 异常警报区域 */}
+        {alertMessages.length > 0 && (
+          <GlassCard sx={{ mb: 4, animation: `${slideInLeft} 0.8s ease-out` }}>
+            <CardHeader
+              title={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="h6" sx={{ 
+                    fontWeight: 700,
+                    background: 'linear-gradient(135deg, #FF3B30 0%, #FF6B6B 100%)',
+                    backgroundClip: 'text',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}>
+                    异常警报
+                  </Typography>
+                  <StatusChip 
+                    label={`${alertMessages.length} 条警报`}
                     size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAlertMessages(prev => prev.filter(a => a.id !== alert.id));
+                    status="danger"
+                  />
+                </Box>
+              }
+              action={
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <AppleButton
+                    variant="outlined"
+                    onClick={refreshAndCheckLatestData}
+                    startIcon={<CircularProgress size={16} sx={{ display: isExporting ? 'block' : 'none' }} />}
+                    disabled={isExporting}
+                    size="small"
+                  >
+                    刷新检测
+                  </AppleButton>
+                  <AppleButton
+                    variant="outlined"
+                    onClick={clearAllAlerts}
+                    size="small"
+                  >
+                    清除警报
+                  </AppleButton>
+                </Box>
+              }
+            />
+            <CardContent>
+              <Box sx={{ maxHeight: 200, overflow: 'auto', pr: 1 }}>
+                {alertMessages.slice(0, 10).map((alert, index) => (
+                  <GlassCard
+                    key={alert.id}
+                    sx={{ 
+                      mb: 1, 
+                      cursor: 'pointer',
+                      background: alert.status === 'danger' 
+                        ? 'linear-gradient(135deg, rgba(255, 59, 48, 0.1) 0%, rgba(255, 107, 107, 0.1) 100%)'
+                        : 'linear-gradient(135deg, rgba(255, 149, 0, 0.1) 0%, rgba(255, 193, 7, 0.1) 100%)',
+                      border: `1px solid ${alert.status === 'danger' ? 'rgba(255, 59, 48, 0.3)' : 'rgba(255, 149, 0, 0.3)'}`,
+                      animation: `${fadeIn} ${0.3 + index * 0.1}s ease-out`,
+                      '&:hover': {
+                        transform: 'translateX(8px)',
+                        boxShadow: '0 8px 25px rgba(0, 0, 0, 0.15)',
+                      }
+                    }}
+                    onClick={() => viewAlertDetails(alert)}
+                  >
+                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#1D1D1F' }}>
+                            {alert.sectionName} - {alert.fieldName}: {alert.value}{alert.unit}
+                            {alert.status === 'danger' ? ' (严重超标)' : ' (轻微超标)'}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#8E8E93', fontWeight: 500 }}>
+                            {new Date(alert.monitorTime).toLocaleString()}
+                          </Typography>
+                        </Box>
+                        <AppleButton
+                          size="small"
+                          variant="outlined"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAlertMessages(prev => prev.filter(a => a.id !== alert.id));
+                          }}
+                          sx={{ ml: 2, minWidth: 'auto', px: 1 }}
+                        >
+                          删除
+                        </AppleButton>
+                      </Box>
+                    </CardContent>
+                  </GlassCard>
+                ))}
+              </Box>
+            </CardContent>
+          </GlassCard>
+        )}
+
+        {/* 区域选择和标题 */}
+        <GlassCard sx={{ mb: 4, animation: `${fadeIn} 1s ease-out` }}>
+          <CardHeader
+            title={
+              <Typography variant="h5" sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                最近水质展示
+              </Typography>
+            }
+          />
+          <CardContent>
+            <FormControl fullWidth>
+              <InputLabel sx={{ color: '#8E8E93', fontWeight: 600 }}>选择区域</InputLabel>
+              <Select
+                value={selectedLocation}
+                label="选择区域"
+                onChange={(e) => setSelectedLocation(e.target.value)}
+                sx={{
+                  borderRadius: '12px',
+                  background: 'rgba(255, 255, 255, 0.8)',
+                  backdropFilter: 'blur(10px)',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    border: '1px solid rgba(0, 122, 255, 0.3)',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    border: '1px solid rgba(0, 122, 255, 0.5)',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    border: '2px solid #007AFF',
+                  },
+                }}
+              >
+                {locations.map((loc, index) => (
+                  <MenuItem key={index} value={`${loc.province}|${loc.basin}|${loc.section_name}`}>
+                    {loc.province} - {loc.basin} - {loc.section_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </CardContent>
+        </GlassCard>
+
+        {/* 当前水质状态卡片 */}
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h5" sx={{ 
+            mb: 3,
+            fontWeight: 700,
+            background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          }}>
+            实时水质状态
+          </Typography>
+          
+          <Grid container spacing={3} justifyContent="center">
+            {Object.entries(currentStatus).map(([key, info], index) => (
+              <Grid item xs={12} sm={6} md={2.4} key={key}>
+                <Box sx={{ animation: `${slideInLeft} ${0.5 + index * 0.1}s ease-out` }}>
+                  <WaterQualityStatusCard 
+                    title={
+                      key === 'dissolved_oxygen' ? '溶解氧' :
+                      key === 'ammonia_nitrogen' ? '氨氮' :
+                      key === 'ph' ? 'pH值' :
+                      key === 'total_phosphorus' ? '总磷' :
+                      key === 'temperature' ? '温度' :
+                      key
+                    }
+                    value={info.value}
+                    status={info.status}
+                    unit={info.unit}
+                  />
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        {/* 数据可视化控制面板 */}
+        <GlassCard sx={{ mb: 4, animation: `${fadeIn} 1.2s ease-out` }}>
+          <CardHeader
+            title={
+              <Typography variant="h5" sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #34C759 0%, #007AFF 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                水质数据可视化
+              </Typography>
+            }
+            action={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {isExporting && <CircularProgress size={20} />}
+              </Box>
+            }
+          />
+          <CardContent>
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel sx={{ color: '#8E8E93', fontWeight: 600 }}>选择时间</InputLabel>
+                  <Select
+                    value={selectedDate}
+                    label="选择时间"
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    sx={{
+                      borderRadius: '12px',
+                      background: 'rgba(255, 255, 255, 0.8)',
+                      backdropFilter: 'blur(10px)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        border: '1px solid rgba(52, 199, 89, 0.3)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        border: '1px solid rgba(52, 199, 89, 0.5)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        border: '2px solid #34C759',
+                      },
                     }}
                   >
-                    删除
-                  </Button>
-                }
-              >
-                <Box>
-                  <Typography variant="body2">
-                    {alert.sectionName} - {alert.fieldName}: {alert.value}{alert.unit}
-                    {alert.status === 'danger' ? ' (严重超标)' : ' (轻微超标)'}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {new Date(alert.monitorTime).toLocaleString()}
-                  </Typography>
-                </Box>
-              </Alert>
-            ))}
-          </Box>
-        </Box>
-      )}
-
-      <Box sx={{ marginTop: 4, marginBottom: 4 }}>
-        {/* 这里是你的卡片或其他内容 */}
-      </Box>
-      <Typography variant="h5" gutterBottom>最近水质展示</Typography>
-      <FormControl fullWidth sx={{ mb: 3 }}>
-        <InputLabel>选择区域</InputLabel>
-        <Select
-          value={selectedLocation}
-          label="选择区域"
-          onChange={(e) => setSelectedLocation(e.target.value)}
-        >
-          {locations.map((loc, index) => (
-            <MenuItem key={index} value={`${loc.province}|${loc.basin}|${loc.section_name}`}>
-              {loc.province} - {loc.basin} - {loc.section_name}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
-      {/* 当前水质状态卡片 */}
-        <Box sx={{ mb: 2 }}>
-        
-        <Grid container spacing={2} sx={{ mb: 4 }} justifyContent="space-between">
-          {Object.entries(currentStatus).map(([key, info]) => (
-            <Grid item xs={12} sm={6} md={2.4} key={key}>
-              <WaterQualityStatusCard 
-                title={
-                  key === 'dissolved_oxygen' ? '溶解氧' :
-                  key === 'ammonia_nitrogen' ? '氨氮' :
-                  key === 'ph' ? 'pH值' :
-                  key === 'total_phosphorus' ? '总磷' :
-                  key === 'temperature' ? '温度' :
-                  key
-                }
-                value={info.value}
-                status={info.status}
-                unit={info.unit}
-              />
+                    {availablePeriods.length > 0 ? (
+                      availablePeriods.map((date) => (
+                        <MenuItem key={date} value={date}>
+                          {date}
+                        </MenuItem>
+                      ))
+                    ) : (
+                      // 备用硬编码选项（如果API失败）
+                      [
+                        '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10',
+                        '2020-11', '2020-12', '2021-01', '2021-02', '2021-03', '2021-04','2025-05'
+                      ].map((date) => (
+                        <MenuItem key={date} value={date}>
+                          {date}
+                        </MenuItem>
+                      ))
+                    )}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel sx={{ color: '#8E8E93', fontWeight: 600 }}>选择区域</InputLabel>
+                  <Select
+                    value={selectedProvinceBasin}
+                    label="选择区域"
+                    onChange={(e) => setSelectedProvinceBasin(e.target.value)}
+                    sx={{
+                      borderRadius: '12px',
+                      background: 'rgba(255, 255, 255, 0.8)',
+                      backdropFilter: 'blur(10px)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        border: '1px solid rgba(88, 86, 214, 0.3)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        border: '1px solid rgba(88, 86, 214, 0.5)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        border: '2px solid #5856D6',
+                      },
+                    }}
+                  >
+                    {provinceBasinList.map((loc, index) => (
+                      <MenuItem key={index} value={`${loc.province}|${loc.basin}`}>
+                        {loc.province} - {loc.basin}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
             </Grid>
-          ))}
-        </Grid>
-      </Box>
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5">水质数据可视化</Typography>
-        <Box>
-          <ButtonGroup disabled={isExporting} sx={{ mr: 1 }}>
-            <Button 
-              startIcon={<Download />}
-              onClick={() => handleExportWaterQuality('csv')}
-              size="small"
-            >
-              导出CSV
-            </Button>
-            <Button 
-              startIcon={<GetApp />}
-              onClick={() => handleExportWaterQuality('excel')}
-              size="small"
-            >
-              导出Excel
-            </Button>
-            <Button 
-              startIcon={<GetApp />}
-              onClick={() => handleExportComprehensiveReport('pdf')}
-              size="small"
-              variant="outlined"
-              color="primary"
-            >
-              PDF报告
-            </Button>
+            {/* 导出按钮组 */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
+              <AppleButton 
+                startIcon={<Download />}
+                onClick={() => handleExportWaterQuality('csv')}
+                disabled={isExporting}
+                variant="outlined"
+              >
+                导出CSV
+              </AppleButton>
+              <AppleButton 
+                startIcon={<GetApp />}
+                onClick={() => handleExportWaterQuality('excel')}
+                disabled={isExporting}
+                variant="outlined"
+              >
+                导出Excel
+              </AppleButton>
+              <AppleButton 
+                startIcon={<GetApp />}
+                onClick={() => handleExportComprehensiveReport('pdf')}
+                disabled={isExporting}
+                variant="primary"
+              >
+                PDF报告
+              </AppleButton>
+              <AppleButton 
+                startIcon={<GetApp />}
+                onClick={() => handleExportComprehensiveReport('excel')}
+                disabled={isExporting}
+                variant="success"
+              >
+                Excel报告
+              </AppleButton>
+              <AppleButton 
+                startIcon={<ImageIcon />}
+                onClick={() => exportAllChartsInPage('水质监测')}
+                disabled={isExporting}
+                variant="warning"
+              >
+                导出所有图表
+              </AppleButton>
+            </Box>
+          </CardContent>
+        </GlassCard>
 
-            <Button 
-              startIcon={<GetApp />}
-              onClick={() => handleExportComprehensiveReport('excel')}
-              size="small"
-              variant="outlined"
-              color="secondary"
-            >
-              Excel报告
-            </Button>
-          </ButtonGroup>
-          <Button 
-            startIcon={<ImageIcon />}
-            onClick={() => exportAllChartsInPage('水质监测')}
-            size="small"
-            variant="contained"
-            color="secondary"
-          >
-            导出所有图表
-          </Button>
-          {isExporting && <CircularProgress size={20} sx={{ ml: 2 }} />}
+
+        {/* 图表展示区 */}
+        <Box sx={{ mb: 4 }}>
+          <Grid container spacing={3} alignItems="stretch">
+            <Grid item xs={12} md={7}>
+              <Box sx={{ animation: `${slideInLeft} 1.4s ease-out` }}>
+                <WaterQualityChart data={waterQualityData} />
+              </Box>
+            </Grid>
+            <Grid item xs={12} md={5}>
+              <Box sx={{ animation: `${slideInLeft} 1.6s ease-out` }}>
+                <WaterQualityDistribution data={distributionData} />
+              </Box>
+            </Grid>
+          </Grid>
         </Box>
-      </Box>
-      <FormControl fullWidth sx={{ mb: 3 }}>
-        <InputLabel>选择时间</InputLabel>
-        <Select
-          value={selectedDate}
-          label="选择时间"
-          onChange={(e) => setSelectedDate(e.target.value)}
-        >
-          {availablePeriods.length > 0 ? (
-            availablePeriods.map((date) => (
-              <MenuItem key={date} value={date}>
-                {date}
-              </MenuItem>
-            ))
-          ) : (
-            // 备用硬编码选项（如果API失败）
-            [
-              '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10',
-              '2020-11', '2020-12', '2021-01', '2021-02', '2021-03', '2021-04','2025-05'
-            ].map((date) => (
-              <MenuItem key={date} value={date}>
-                {date}
-              </MenuItem>
-            ))
-          )}
-        </Select>
-      </FormControl>
-
-            {/* 区域选择下拉框（仅省份 + 流域） */}
-      <FormControl fullWidth sx={{ mb: 3 }}>
-        <InputLabel>选择区域</InputLabel>
-        <Select
-          value={selectedProvinceBasin}
-          label="选择区域"
-          onChange={(e) => setSelectedProvinceBasin(e.target.value)}
-        >
-          {provinceBasinList.map((loc, index) => (
-            <MenuItem key={index} value={`${loc.province}|${loc.basin}`}>
-              {loc.province} - {loc.basin}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
-
-      {/* 图表展示区 */}
-      <Box sx={{ mb: 4 }}>
-        <Grid container spacing={2} alignItems="stretch">
-          <Grid item xs={12} md={7}>
-            <WaterQualityChart data={waterQualityData} />
-          </Grid>
-          <Grid item xs={12} md={5}>
-            <WaterQualityDistribution data={distributionData} />
-          </Grid>
-        </Grid>
-      </Box>
       
-        <Box sx={{ marginTop: 10, marginBottom: 10 }}>
-          {/* 这里是你的卡片或其他内容 */}
-        </Box>
-      <Typography variant="h5" gutterBottom>历史水质数据</Typography>
-      <FormControl fullWidth sx={{ mb: 3 }}>
-      <InputLabel>选择时间</InputLabel>
-      <Select
-        value={newSelectedDate} // 使用新的状态变量
-        label="选择时间"
-        onChange={(e) => setNewSelectedDate(e.target.value)} // 更新新的状态变量
-      >
-        {availablePeriods.length > 0 ? (
-          availablePeriods.map((date) => (
-            <MenuItem key={date} value={date}>
-              {date}
-            </MenuItem>
-          ))
-        ) : (
-          // 备用硬编码选项（如果API失败）
-          [
-            '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10',
-            '2020-11', '2020-12', '2021-01', '2021-02', '2021-03', '2021-04', '2025-05'
-          ].map((date) => (
-            <MenuItem key={date} value={date}>
-              {date}
-            </MenuItem>
-          ))
-        )}
-      </Select>
-    </FormControl>
+        {/* 历史数据控制面板 */}
+        <GlassCard sx={{ mb: 4, animation: `${fadeIn} 1.8s ease-out` }}>
+          <CardHeader
+            title={
+              <Typography variant="h5" sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #FF9500 0%, #FF3B30 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                历史水质数据
+              </Typography>
+            }
+          />
+          <CardContent>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel sx={{ color: '#8E8E93', fontWeight: 600 }}>选择时间</InputLabel>
+                  <Select
+                    value={newSelectedDate} // 使用新的状态变量
+                    label="选择时间"
+                    onChange={(e) => setNewSelectedDate(e.target.value)} // 更新新的状态变量
+                    sx={{
+                      borderRadius: '12px',
+                      background: 'rgba(255, 255, 255, 0.8)',
+                      backdropFilter: 'blur(10px)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        border: '1px solid rgba(255, 149, 0, 0.3)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        border: '1px solid rgba(255, 149, 0, 0.5)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        border: '2px solid #FF9500',
+                      },
+                    }}
+                  >
+                    {availablePeriods.length > 0 ? (
+                      availablePeriods.map((date) => (
+                        <MenuItem key={date} value={date}>
+                          {date}
+                        </MenuItem>
+                      ))
+                    ) : (
+                      // 备用硬编码选项（如果API失败）
+                      [
+                        '2020-05', '2020-06', '2020-07', '2020-08', '2020-09', '2020-10',
+                        '2020-11', '2020-12', '2021-01', '2021-02', '2021-03', '2021-04', '2025-05'
+                      ].map((date) => (
+                        <MenuItem key={date} value={date}>
+                          {date}
+                        </MenuItem>
+                      ))
+                    )}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel sx={{ color: '#8E8E93', fontWeight: 600 }}>选择区域</InputLabel>
+                  <Select
+                    value={newSelectedProvinceBasin}
+                    label="选择区域"
+                    onChange={(e) => setNewSelectedProvinceBasin(e.target.value)}
+                    sx={{
+                      borderRadius: '12px',
+                      background: 'rgba(255, 255, 255, 0.8)',
+                      backdropFilter: 'blur(10px)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        border: '1px solid rgba(255, 59, 48, 0.3)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        border: '1px solid rgba(255, 59, 48, 0.5)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        border: '2px solid #FF3B30',
+                      },
+                    }}
+                  >
+                    {newProvinceBasinList.map((loc, index) => (
+                      <MenuItem key={index} value={`${loc.province}|${loc.basin}`}>
+                        {loc.province} - {loc.basin}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </GlassCard>
 
-    <FormControl fullWidth sx={{ mb: 3 }}>
-        <InputLabel>选择区域</InputLabel>
-        <Select
-          value={newSelectedProvinceBasin}
-          label="选择区域"
-          onChange={(e) => setNewSelectedProvinceBasin(e.target.value)} 
-        >
-          {newProvinceBasinList.map((loc, index) => (
-            <MenuItem key={index} value={`${loc.province}|${loc.basin}`}>
-              {loc.province} - {loc.basin}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
-      {/* 历史数据表格 */}
-      <Box sx={{ mt: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">历史水质数据</Typography>
-        <ButtonGroup size="small" disabled={isExporting}>
-          <Button 
-            startIcon={<Download />}
-            onClick={() => handleExportWaterQuality('csv')}
-          >
-            导出表格CSV
-          </Button>
-          <Button 
-            startIcon={<GetApp />}
-            onClick={() => handleExportWaterQuality('excel')}
-          >
-            导出表格Excel
-          </Button>
-        </ButtonGroup>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>日期</TableCell>
-              <TableCell>断面名称</TableCell>
-              <TableCell>水质类别</TableCell>
-              <TableCell>水温 (°C)</TableCell>
-              <TableCell>pH值</TableCell>
-              <TableCell>溶解氧 (mg/L)</TableCell>
-              <TableCell>电导率 (μS/cm)</TableCell>
-              <TableCell>浑浊度 (NTU)</TableCell>
-              <TableCell>高锰酸盐指数</TableCell>
-              <TableCell>氨氮 (mg/L)</TableCell>
-              <TableCell>总磷 (mg/L)</TableCell>
-              <TableCell>总氮 (mg/L)</TableCell>
-              <TableCell>叶绿素 a (mg/m³)</TableCell>
-              <TableCell>藻类密度 (cells/L)</TableCell>
-              <TableCell>站点状态</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {newFullWaterQualityData.map((item, index) => (
-              <TableRow key={index}>
-                <TableCell>{new Date(item.monitor_time).toLocaleDateString()}</TableCell>
-                <TableCell>{item.section_name}</TableCell>
-                <TableCell>{item.water_quality_category}</TableCell>
-                <TableCell>{item.water_temperature}</TableCell>
-                <TableCell>{item.pH}</TableCell>
-                <TableCell>{item.dissolved_oxygen}</TableCell>
-                <TableCell>{item.conductivity}</TableCell>
-                <TableCell>{item.turbidity}</TableCell>
-                <TableCell>{item.permanganate_index}</TableCell>
-                <TableCell>{item.ammonia_nitrogen}</TableCell>
-                <TableCell>{item.total_phosphorus}</TableCell>
-                <TableCell>{item.total_nitrogen}</TableCell>
-                <TableCell>{item.chlorophyll_a}</TableCell>
-                <TableCell>{item.algae_density}</TableCell>
-                <TableCell>{item.station_status}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-</Box>
+        {/* 历史数据表格 */}
+        <GlassCard sx={{ mb: 4, animation: `${fadeIn} 2s ease-out` }}>
+          <CardHeader
+            title={
+              <Typography variant="h6" sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #5856D6 0%, #AF52DE 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                历史水质数据详情
+              </Typography>
+            }
+            action={
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <AppleButton 
+                  startIcon={<Download />}
+                  onClick={() => handleExportWaterQuality('csv')}
+                  disabled={isExporting}
+                  variant="outlined"
+                  size="small"
+                >
+                  导出CSV
+                </AppleButton>
+                <AppleButton 
+                  startIcon={<GetApp />}
+                  onClick={() => handleExportWaterQuality('excel')}
+                  disabled={isExporting}
+                  variant="outlined"
+                  size="small"
+                >
+                  导出Excel
+                </AppleButton>
+              </Box>
+            }
+          />
+          <CardContent sx={{ p: 0 }}>
+            <TableContainer sx={{ 
+              maxHeight: 600,
+              borderRadius: '0 0 16px 16px',
+              '&::-webkit-scrollbar': {
+                width: 8,
+                height: 8,
+              },
+              '&::-webkit-scrollbar-track': {
+                background: 'rgba(0, 0, 0, 0.1)',
+                borderRadius: 4,
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: 'linear-gradient(135deg, #007AFF, #5856D6)',
+                borderRadius: 4,
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #0051D5, #4C44B8)',
+                },
+              },
+            }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    {[
+                      '日期', '断面名称', '水质类别', '水温 (°C)', 'pH值', '溶解氧 (mg/L)',
+                      '电导率 (μS/cm)', '浑浊度 (NTU)', '高锰酸盐指数', '氨氮 (mg/L)',
+                      '总磷 (mg/L)', '总氮 (mg/L)', '叶绿素 a (mg/m³)', '藻类密度 (cells/L)', '站点状态'
+                    ].map((header, index) => (
+                      <TableCell 
+                        key={header}
+                        sx={{ 
+                          background: 'linear-gradient(135deg, rgba(0, 122, 255, 0.1) 0%, rgba(88, 86, 214, 0.1) 100%)',
+                          backdropFilter: 'blur(10px)',
+                          fontWeight: 700,
+                          color: '#1D1D1F',
+                          borderBottom: '2px solid rgba(0, 122, 255, 0.3)',
+                          fontSize: '0.875rem',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {header}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {newFullWaterQualityData.map((item, index) => (
+                    <TableRow 
+                      key={index}
+                      sx={{
+                        '&:nth-of-type(odd)': {
+                          background: 'rgba(255, 255, 255, 0.3)',
+                        },
+                        '&:nth-of-type(even)': {
+                          background: 'rgba(255, 255, 255, 0.1)',
+                        },
+                        '&:hover': {
+                          background: 'rgba(0, 122, 255, 0.1)',
+                          transform: 'scale(1.02)',
+                          transition: 'all 0.2s ease',
+                        },
+                        animation: `${fadeIn} ${0.5 + index * 0.05}s ease-out`,
+                      }}
+                    >
+                      <TableCell sx={{ fontWeight: 600, color: '#007AFF' }}>
+                        {new Date(item.monitor_time).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: '#1D1D1F' }}>
+                        {item.section_name}
+                      </TableCell>
+                      <TableCell>
+                        <StatusChip 
+                          label={item.water_quality_category}
+                          size="small"
+                          status={
+                            item.water_quality_category?.includes('优') || item.water_quality_category?.includes('I') ? 'good' :
+                            item.water_quality_category?.includes('良') || item.water_quality_category?.includes('II') ? 'good' :
+                            item.water_quality_category?.includes('III') ? 'warning' : 'danger'
+                          }
+                        />
+                      </TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.water_temperature}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.pH}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.dissolved_oxygen}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.conductivity}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.turbidity}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.permanganate_index}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.ammonia_nitrogen}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.total_phosphorus}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.total_nitrogen}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.chlorophyll_a}</TableCell>
+                      <TableCell sx={{ color: '#1D1D1F', fontWeight: 500 }}>{item.algae_density}</TableCell>
+                      <TableCell>
+                        <StatusChip 
+                          label={item.station_status || '正常'}
+                          size="small"
+                          status="good"
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </GlassCard>
 
        <Box sx={{ marginTop: 18, marginBottom: 18 }}>
           {/* 这里是你的卡片或其他内容 */}
         </Box>
 
-      {/* 导出消息提示 */}
-      <Snackbar
-        open={showExportAlert}
-        autoHideDuration={4000}
-        onClose={handleCloseAlert}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={handleCloseAlert} 
-          severity={exportMessage.includes('失败') ? 'error' : 'success'}
-          sx={{ width: '100%' }}
+        {/* 导出消息提示 */}
+        <Snackbar
+          open={showExportAlert}
+          autoHideDuration={4000}
+          onClose={handleCloseAlert}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
-          {exportMessage}
-        </Alert>
-      </Snackbar>
+          <Alert 
+            onClose={handleCloseAlert} 
+            severity={exportMessage.includes('失败') ? 'error' : 'success'}
+            sx={{ 
+              width: '100%',
+              borderRadius: '12px',
+              background: exportMessage.includes('失败') 
+                ? 'linear-gradient(135deg, rgba(255, 59, 48, 0.9) 0%, rgba(255, 107, 107, 0.9) 100%)'
+                : 'linear-gradient(135deg, rgba(52, 199, 89, 0.9) 0%, rgba(40, 167, 69, 0.9) 100%)',
+              backdropFilter: 'blur(20px)',
+              color: 'white',
+              fontWeight: 600,
+              boxShadow: '0 8px 25px rgba(0, 0, 0, 0.2)',
+              '& .MuiAlert-icon': {
+                color: 'white',
+              },
+              '& .MuiAlert-action': {
+                color: 'white',
+              },
+            }}
+          >
+            {exportMessage}
+          </Alert>
+        </Snackbar>
 
       {/* 水质标准设置对话框 */}
       <Dialog 
@@ -1468,7 +1971,8 @@ function HomePage() {
         </DialogActions>
       </Dialog>
 
-    </Container>
+      </Container>
+    </Box>
   );
 }
 

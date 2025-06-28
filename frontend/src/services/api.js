@@ -296,6 +296,33 @@ export const apiService = {
     }
   },
 
+  exportSpeciesData: async (species, format = 'csv') => {
+    const apiClient = await createApiClient();
+    
+    try {
+      const response = await apiClient.get('/api/export/species-data', { 
+        params: { species, format },
+        responseType: 'blob'
+      });
+      
+      // 创建下载链接
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const filename = `${species}_data.${format === 'excel' || format === 'xlsx' ? 'xlsx' : 'csv'}`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true, message: '导出成功' };
+    } catch (error) {
+      throw new Error('导出品种数据失败');
+    }
+  },
+
   exportUsers: async (format = 'csv') => {
     const apiClient = await createApiClient();
     
