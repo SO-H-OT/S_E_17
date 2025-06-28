@@ -395,17 +395,87 @@ def get_weather():
 @app.route('/api/air-quality', methods=['GET'])
 def get_air_quality():
     try:
-        url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+        latitude = request.args.get('latitude')
+        longitude = request.args.get('longitude')
+        
+        if not latitude or not longitude:
+            return jsonify({
+                "success": False,
+                "error": "Missing required parameters: latitude and longitude"
+            }), 400
+        try:
+            lat_list = [float(lat.strip()) for lat in latitude.split(',')]
+            lng_list = [float(lng.strip()) for lng in longitude.split(',')]
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "error": "Invalid coordinate format. Must be comma-separated float values"
+            }), 400
+        if len(lat_list) != len(lng_list):
+            return jsonify({
+                "success": False,
+                "error": "Mismatched number of latitude and longitude values"
+            }), 400
+
+        for lat in lat_list:
+            if not (-90 <= lat <= 90):
+                return jsonify({
+                    "success": False,
+                    "error": f"Invalid latitude value: {lat}. Must be between -90 and 90"
+                }), 400
+        
+        for lng in lng_list:
+            if not (-180 <= lng <= 180):
+                return jsonify({
+                    "success": False,
+                    "error": f"Invalid longitude value: {lng}. Must be between -180 and 180"
+                }), 400
         params = {
-            "latitude": 52.52,
-            "longitude": 13.41,
-            "hourly": ["pm10", "pm2_5", "carbon_monoxide", "nitrogen_dioxide", "sulphur_dioxide", "ozone"]
+            "latitude": latitude,
+            "longitude": longitude,
+            "forecast_days": 4,  # 固定为4天
+            "hourly": "pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone"
         }
+        excluded_params = {'latitude', 'longitude', 'forecast_days'}
+        for key, value in request.args.items():
+            if key not in excluded_params:
+                params[key] = value
+
+        url = "https://air-quality-api.open-meteo.com/v1/air-quality"
         response = requests.get(url, params=params)
+        response.raise_for_status()
         data = response.json()
-        return jsonify({"success": True, "data": data})
+        
+        if len(lat_list) > 1 and isinstance(data.get('hourly'), dict):
+            data['metadata'] = {
+                'locations': [
+                    {'latitude': lat, 'longitude': lng, 'location_id': i}
+                    for i, (lat, lng) in enumerate(zip(lat_list, lng_list))
+                ]
+            }
+        return jsonify({
+            "success": True,
+            "data": data,
+            "params": {
+                "latitude": latitude,
+                "longitude": longitude,
+                "forecast_days": 4
+            }
+        })
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "success": False,
+            "error": f"API request failed: {str(e)}",
+            "details": f"URL: {e.request.url}" if hasattr(e, 'request') else None
+        }), 502
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({
+            "success": False,
+            "error": f"Unexpected error: {str(e)}"
+        }), 500
+
+
 
 @app.route('/api/video/<filename>')
 def get_video(filename):
@@ -797,28 +867,23 @@ def get_current_status():
 @app.route('/api/water-quality/province-basin-sectionname-list', methods=['GET'])
 def get_province_basin_sectionname_list():
     try:
-        # 获取请求参数（默认为 2025 年和 05 月）
         year = request.args.get('year', '2025')
         month = request.args.get('month', '05')
-
-        # 构造表名
         table_name = f"{year}-{month}"
 
-        # 构造查询语句
         sql = f"""
             SELECT DISTINCT province, basin,section_name
             FROM `{table_name}`
             ORDER BY province, basin,section_name
         """
-        app.logger.info(f"Executing SQL: {sql}")  # 打印 SQL 查询日志
+        app.logger.info(f"Executing SQL: {sql}") 
           
-        # 连接数据库并执行查询
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute(sql)
             rows = cursor.fetchall()
         conn.close()
-        app.logger.info(f"Query result: {rows}")  # 打印查询结果
+        app.logger.info(f"Query result: {rows}")  
         
         if not rows:
             app.logger.error("No data found")
@@ -837,14 +902,9 @@ def get_province_basin_sectionname_list():
 @app.route('/api/water-quality/province-basin-list', methods=['GET'])
 def get_province_basin_list():
     try:
-        # 获取请求参数（默认为 2025 年和 05 月）
         year = request.args.get('year', '2025')
         month = request.args.get('month', '05')
-
-        # 构造表名
         table_name = f"{year}-{month}"
-
-        # 构造查询语句
         sql = f"""
             SELECT DISTINCT province, basin
             FROM `{table_name}`
@@ -872,6 +932,108 @@ def get_province_basin_list():
         app.logger.error(f"Error during query execution: {str(e)}")
         app.logger.error(f"Query result: {rows}")
         return jsonify({"success": False, "error": str(e)}), 500
+    
+
+@app.route('/api/fishes/species-list', methods=['GET'])
+def get_fish_species_list():
+    try:
+        # 连接数据库并执行查询
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # 查询所有不重复的鱼类品种
+            sql = """
+                SELECT DISTINCT species
+                FROM `fishes`
+                ORDER BY species
+            """
+            app.logger.info(f"Executing SQL: {sql}") 
+            
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+        conn.close()
+        app.logger.info(f"Query result: {rows}")  
+        
+        if not rows:
+            app.logger.error("No fish species found")
+            return jsonify({"success": False, "error": "No fish species found"}), 404
+
+        # 构建返回结果（直接提取species字段值）
+        result = [row["species"] for row in rows]  # 使用字段名访问数据
+        return jsonify({"success": True, "data": result})
+
+    except Exception as e:
+        app.logger.error(f"Error during query execution: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/fishes/species-data', methods=['GET'])
+def get_fish_species_data():
+    conn = None
+    try:
+        species = request.args.get('species')
+        if not species:
+            return jsonify({"success": False, "error": "Species parameter is required"}), 400
+
+        # 获取数据库连接
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            sql = """
+                SELECT 
+                    species,
+                    weight,
+                    length1,
+                    length2,
+                    length3,
+                    height,
+                    width
+                FROM fishes 
+                WHERE species = %s
+            """
+            app.logger.info(f"Executing SQL: {sql} with species: {species}")
+            cursor.execute(sql, (species,))
+            rows = cursor.fetchall()
+
+        if not rows:
+            return jsonify({"success": False, "error": f"No data found for species: {species}"}), 404
+
+        # 计算平均值
+        def safe_mean(values):
+            clean_values = [v for v in values if v is not None]
+            return round(sum(clean_values)/len(clean_values), 2) if clean_values else None
+
+        averages = {
+            "weight": safe_mean([r['weight'] for r in rows]),
+            "length1": safe_mean([r['length1'] for r in rows]),
+            "length2": safe_mean([r['length2'] for r in rows]),
+            "length3": safe_mean([r['length3'] for r in rows]),
+            "height": safe_mean([r['height'] for r in rows]),
+            "width": safe_mean([r['width'] for r in rows]),
+            "record_count": len(rows)
+        }
+
+        return jsonify({
+            "success": True,
+            "species": species,
+            "records": rows,
+            "averages": averages,
+            "units": {
+                "weight": "grams",
+                "length": "cm",
+                "height": "cm",
+                "width": "cm"
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error during query execution: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn and conn.open:  # 只有连接存在且未关闭时才关闭
+            try:
+                conn.close()
+            except Exception as e:
+                app.logger.warning(f"Error closing connection: {str(e)}")
+    
 
 @app.route('/api/water-quality/current_data', methods=['GET'])
 def get_current_data():
@@ -940,6 +1102,113 @@ def get_current_data():
     except Exception as e:
         app.logger.error(f"Error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+    
+
+@app.route('/api/fishes/weight-stats', methods=['GET'])
+def get_fish_weight_stats():
+    conn = None
+    try:
+        species = request.args.get('species')
+        if not species:
+            return jsonify({"success": False, "error": "Species parameter is required"}), 400
+
+        # 初始化结果结构
+        result = {
+            "success": True,
+            "species": species,
+            "weight_distribution": {
+                "<100g": 0,
+                "100-300g": 0,
+                "300-500g": 0,
+                "500-700g": 0,
+                "700-1000g": 0,
+                "1000-1500g": 0,
+                ">1500g": 0
+            },
+            "total_count": 0,
+            "unit": "grams",
+            "chart_data": []
+        }
+
+        sql = """
+            SELECT 
+                COALESCE(SUM(CASE WHEN weight < 100 THEN 1 ELSE 0 END), 0) AS under_100,
+                COALESCE(SUM(CASE WHEN weight >= 100 AND weight < 300 THEN 1 ELSE 0 END), 0) AS _100_to_300,
+                COALESCE(SUM(CASE WHEN weight >= 300 AND weight < 500 THEN 1 ELSE 0 END), 0) AS _300_to_500,
+                COALESCE(SUM(CASE WHEN weight >= 500 AND weight < 700 THEN 1 ELSE 0 END), 0) AS _500_to_700,
+                COALESCE(SUM(CASE WHEN weight >= 700 AND weight < 1000 THEN 1 ELSE 0 END), 0) AS _700_to_1000,
+                COALESCE(SUM(CASE WHEN weight >= 1000 AND weight < 1500 THEN 1 ELSE 0 END), 0) AS _1000_to_1500,
+                COALESCE(SUM(CASE WHEN weight >= 1500 THEN 1 ELSE 0 END), 0) AS over_1500,
+                COALESCE(COUNT(*), 0) AS total_count
+            FROM fishes 
+            WHERE species = %s
+        """
+
+        app.logger.info(f"Executing SQL: {sql} with species: {species}")
+
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql, (species,))
+            row = cursor.fetchone()
+
+            if not row:
+                return jsonify({"success": False, "error": f"No data found for species: {species}"}), 404
+
+            # 处理查询结果，确保所有值都是整数
+            processed_row = {}
+            for key, value in row.items():
+                # 处理可能的None值
+                if value is None:
+                    processed_row[key] = 0
+                # 处理数值类型（包括Decimal和普通数字）
+                elif isinstance(value, (int, float)):
+                    processed_row[key] = int(value)
+                # 尝试将其他类型转换为整数
+                else:
+                    try:
+                        processed_row[key] = int(value)
+                    except (ValueError, TypeError):
+                        processed_row[key] = 0
+                        app.logger.warning(f"Failed to convert {key} value: {value}")
+
+            # 映射数据库字段到前端显示名称
+            weight_mapping = {
+                "under_100": "<100g",
+                "_100_to_300": "100-300g",
+                "_300_to_500": "300-500g",
+                "_500_to_700": "500-700g",
+                "_700_to_1000": "700-1000g",
+                "_1000_to_1500": "1000-1500g",
+                "over_1500": ">1500g"
+            }
+
+            # 填充体重分布数据
+            for db_key, display_key in weight_mapping.items():
+                result["weight_distribution"][display_key] = processed_row[db_key]
+
+            # 设置总记录数
+            result["total_count"] = processed_row["total_count"]
+
+            # 生成饼图数据（过滤掉数量为0的区间）
+            result["chart_data"] = [
+                {"name": display_key, "value": count}
+                for db_key, display_key in weight_mapping.items()
+                if (count := processed_row[db_key]) > 0
+            ]
+        print(result)
+        return jsonify(result)
+       
+
+    except Exception as e:
+        app.logger.error(f"Error in get_fish_weight_stats: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception as e:
+                app.logger.warning(f"Error closing connection: {str(e)}")
+
 
 @app.route('/api/water-quality/category-statistics', methods=['GET'])
 def get_quality_category_statistics():
@@ -1043,7 +1312,7 @@ def get_full_data():
         app.logger.info(f"SQL Parameters: {params}")
 
         conn = get_db_connection()
-        with conn.cursor(DictCursor) as cursor:  # ✅ 局部使用 DictCursor
+        with conn.cursor(DictCursor) as cursor:  
             cursor.execute(sql, params)
             rows = cursor.fetchall()
         conn.close()
@@ -1138,6 +1407,298 @@ def get_server_info():
         "port": SERVER_PORT,
         "url": SERVER_URL
     })
+
+@app.route('/api/geocode/city-code', methods=['GET'])
+def get_city_code():
+    try:
+        # 调试日志：打印原始参数
+        app.logger.debug(f"接收到的原始参数: {request.args}")
+        
+        # 参数获取与验证
+        key = request.args.get('key', '').strip()
+        address = request.args.get('address', '').strip()
+        
+        if not key or not address:
+            app.logger.error(f"参数验证失败: key={key}, address={address}")
+            return jsonify({
+                "success": False,
+                "error": "参数key和address必须提供",
+                "received": request.args.to_dict()
+            }), 400
+
+        # 调用高德API
+        amap_url = "https://restapi.amap.com/v3/geocode/geo"
+        try:
+            response = requests.get(
+                amap_url,
+                params={'key': key, 'address': address},
+                timeout=5
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            app.logger.error(f"高德API请求失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": "地图服务请求失败",
+                "details": str(e)
+            }), 502
+
+        # 处理高德API响应
+        if data.get('status') != '1':
+            app.logger.error(f"高德API错误响应: {data}")
+            return jsonify({
+                "success": False,
+                "error": data.get('info', '地址解析服务错误'),
+                "amap_response": data
+            }), 400
+
+        if not data.get('geocodes'):
+            return jsonify({
+                "success": False,
+                "error": "未找到匹配的地址信息"
+            }), 404
+
+        # 成功响应
+        return jsonify({
+            "success": True,
+            "data": {
+                "city_code": data['geocodes'][0]['adcode'],
+                "formatted_address": data['geocodes'][0]['formatted_address']
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"未处理的异常: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": "服务器内部错误",
+            "exception": str(e)
+        }), 500
+
+@app.route('/api/weather/amap', methods=['GET'])
+def get_amap_weather():
+
+    # 参数接收与验证
+    params = {
+        'key': request.args.get('key', '').strip(),
+        'city_code': request.args.get('city_code', '').strip(),
+        'extensions': request.args.get('extensions', 'all').strip().lower()
+    }
+    
+    # 参数验证
+    if not all(params.values()):
+        missing = [k for k, v in params.items() if not v]
+        app.logger.error(f"缺少必要参数: {missing}")
+        return jsonify({
+            "success": False,
+            "error": f"缺少必要参数: {', '.join(missing)}",
+            "received": request.args.to_dict()
+        }), 400
+
+    if not params['city_code'].isdigit():
+        app.logger.error(f"无效城市编码格式: {params['city_code']}")
+        return jsonify({
+            "success": False,
+            "error": "城市编码必须为数字",
+            "received": params['city_code']
+        }), 400
+
+    if params['extensions'] not in ['base', 'all']:
+        app.logger.error(f"无效extensions参数: {params['extensions']}")
+        return jsonify({
+            "success": False,
+            "error": "extensions必须是base或all",
+            "received": params['extensions']
+        }), 400
+
+    # 构建高德API请求
+    amap_params = {
+        'key': params['key'],
+        'city': params['city_code'],
+        'extensions': params['extensions'],
+        'output': 'JSON'
+    }
+
+    try:
+        # 调用高德API
+        response = requests.get(
+            "https://restapi.amap.com/v3/weather/weatherInfo",
+            params=amap_params,
+            timeout=(3.05, 10)  # 连接超时3.05秒，读取超时10秒
+        )
+        response.raise_for_status()
+        amap_data = response.json()
+        
+        # 处理高德API响应
+        if amap_data.get('status') != '1':
+            error_info = amap_data.get('info', '未知错误')
+            app.logger.error(f"高德API错误: {error_info}")
+            return jsonify({
+                "success": False,
+                "error": f"高德接口返回错误: {error_info}",
+                "amap_response": amap_data
+            }), 502
+
+        # 数据标准化处理
+        result = {
+            "success": True,
+            "data": {
+                "report_time": amap_data.get("reportTime", ""),
+                "city_info": {
+                    "code": params['city_code'],
+                    "name": get_city_name(amap_data, params['extensions'])
+                },
+                "weather": parse_weather_data(amap_data, params['extensions'])
+            },
+            "metadata": {
+                "request_id": request.headers.get('X-Request-ID'),
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+        }
+
+        app.logger.info(f"成功获取天气数据: {params['city_code']}")
+        return jsonify(result)
+
+    except requests.exceptions.Timeout:
+        app.logger.error("请求高德API超时")
+        return jsonify({
+            "success": False,
+            "error": "连接天气服务超时"
+        }), 504
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"高德API请求异常: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": "天气服务不可用",
+            "details": str(e)
+        }), 502
+    except Exception as e:
+        app.logger.error(f"未处理异常: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": "服务器处理请求时出错",
+            "exception": str(e)
+        }), 500
+
+
+def get_city_name(amap_data, extensions):
+    """获取城市名称"""
+    if extensions == 'base':
+        return amap_data.get("lives", [{}])[0].get("city", "未知城市")
+    return amap_data.get("forecasts", [{}])[0].get("city", "未知城市")
+
+
+def parse_weather_data(amap_data, extensions):
+    """解析天气数据"""
+    if extensions == 'base':
+        live = amap_data.get("lives", [{}])[0]
+        return {
+            "type": "live",
+            "weather": live.get("weather"),
+            "temperature": live.get("temperature"),
+            "wind": {
+                "direction": live.get("winddirection"),
+                "power": live.get("windpower")
+            },
+            "humidity": live.get("humidity")
+        }
+    
+    forecast = amap_data.get("forecasts", [{}])[0]
+    return {
+        "type": "forecast",
+        "casts": [
+            {
+                "date": cast.get("date"),
+                "day": {
+                    "weather": cast.get("dayweather"),
+                    "temp": cast.get("daytemp"),
+                    "wind": cast.get("daywind"),
+                    "power": cast.get("daypower")
+                },
+                "night": {
+                    "weather": cast.get("nightweather"),
+                    "temp": cast.get("nighttemp"),
+                    "wind": cast.get("nightwind"),
+                    "power": cast.get("nightpower")
+                }
+            } for cast in forecast.get("casts", [])
+        ]
+    }
+
+@app.route('/api/geocode/city-lnglat', methods=['GET'])
+def get_city_lnglat():
+    try:
+        key = request.args.get('key', '').strip()
+        city_code = request.args.get('city_code', '').strip()
+
+        if not key or not city_code:
+            app.logger.error(f"参数验证失败: key={key}, city_code={city_code}")
+            return jsonify({
+                "success": False,
+                "error": "参数key和city_code必须提供",
+                "received": request.args.to_dict()
+            }), 400
+
+        # 调用高德行政区查询API
+        amap_url = "https://restapi.amap.com/v3/config/district"
+        try:
+            response = requests.get(
+                amap_url,
+                params={
+                    'key': key,
+                    'keywords': city_code,
+                    'subdistrict': 0,
+                    'extensions': 'base'
+                },
+                timeout=5
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            app.logger.error(f"高德API请求失败: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": "地图服务请求失败",
+                "details": str(e)
+            }), 502
+
+        if data.get('status') != '1' or not data.get('districts'):
+            app.logger.error(f"高德API错误响应: {data}")
+            return jsonify({
+                "success": False,
+                "error": data.get('info', '行政区查询服务错误'),
+                "amap_response": data
+            }), 400
+
+        district = data['districts'][0]
+        # 中心点格式为 "经度,纬度"
+        center = district.get('center', '')
+        if not center or ',' not in center:
+            return jsonify({
+                "success": False,
+                "error": "未找到该城市的经纬度信息"
+            }), 404
+
+        lng, lat = center.split(',')
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "city_code": city_code,
+                "name": district.get('name', ''),
+                "longitude": float(lng),
+                "latitude": float(lat)
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"未处理的异常: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": "服务器内部错误",
+            "exception": str(e)
+        }), 500
 
 # 数据导出相关API
 @app.route('/api/export/water-quality', methods=['GET'])
