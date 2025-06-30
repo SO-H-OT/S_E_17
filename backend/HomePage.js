@@ -174,7 +174,7 @@ function HomePage() {
           setSelectedLocation(`${data.data[0].province}|${data.data[0].basin}|${data.data[0].section_name}`);
         }
       } catch (err) {
-        console.error('获取区域列表失败', err);
+        //console.error('获取区域列表失败', err);
       }
     };
     fetchLocations();
@@ -216,7 +216,7 @@ function HomePage() {
         setSelectedProvinceBasin(`${data.data[0].province}|${data.data[0].basin}`);
       }
     } catch (err) {
-      console.error('获取省流域列表失败', err);
+      //console.error('获取省流域列表失败', err);
     }
   };
 
@@ -238,7 +238,7 @@ useEffect(() => {
         setNewSelectedProvinceBasin(`${data.data[0].province}|${data.data[0].basin}`);
       }
     } catch (err) {
-      console.error('获取新的省流域列表失败', err);
+      //console.error('获取新的省流域列表失败', err);
     }
   };
 
@@ -267,7 +267,7 @@ useEffect(() => {
         setWaterQualityData([]);  // 确保设置为空数组
       }
     } catch (error) {
-      console.error('获取水质数据失败', error);
+      //console.error('获取水质数据失败', error);
       setWaterQualityData([]);  // 确保设置为空数组
     }
   };
@@ -298,7 +298,7 @@ useEffect(() => {
         setDistributionData([]);
       }
     } catch (error) {
-      console.error('获取水质等级分布失败', error);
+      //console.error('获取水质等级分布失败', error);
       setDistributionData([]);
     }
   };
@@ -326,7 +326,7 @@ useEffect(() => {
         setNewFullWaterQualityData([]);  // 确保设置为空数组
       }
     } catch (error) {
-      console.error('获取完整水质数据失败', error);
+      //console.error('获取完整水质数据失败', error);
       setNewFullWaterQualityData([]);  // 确保设置为空数组
     }
   };

@@ -132,7 +132,7 @@ export const apiService = {
       return response.data;
     } catch (error) {
       console.error("Fish statistics API error:", error);
-      throw new Error('获取鱼类统计数据失败');
+      //throw new Error('获取鱼类统计数据失败');
     }
   },
 
@@ -143,7 +143,7 @@ export const apiService = {
       const response = await apiClient.get('/api/online-market');
       return response.data;
     } catch (error) {
-      throw new Error('获取在线市场数据失败');
+      //throw new Error('获取在线市场数据失败');
     }
   },
 
@@ -154,7 +154,7 @@ export const apiService = {
       const response = await apiClient.get('/api/weather');
       return response.data;
     } catch (error) {
-      throw new Error('获取天气数据失败');
+      //throw new Error('获取天气数据失败');
     }
   },
 
@@ -165,7 +165,7 @@ export const apiService = {
       const response = await apiClient.get('/api/air-quality');
       return response.data;
     } catch (error) {
-      throw new Error('获取空气质量数据失败');
+      //throw new Error('获取空气质量数据失败');
     }
   },
 
@@ -180,7 +180,7 @@ export const apiService = {
       const response = await apiClient.get('/api/water-quality', { params });
       return response.data;
     } catch (error) {
-      throw new Error('获取水质数据失败');
+      //throw new Error('获取水质数据失败');
     }
   },
 
@@ -191,7 +191,7 @@ export const apiService = {
       const response = await apiClient.get('/api/water-quality/periods');
       return response.data;
     } catch (error) {
-      throw new Error('获取水质时间段失败');
+      //throw new Error('获取水质时间段失败');
     }
   },
 
@@ -202,7 +202,7 @@ export const apiService = {
       const response = await apiClient.get('/api/water-quality/provinces');
       return response.data;
     } catch (error) {
-      throw new Error('获取省份数据失败');
+      //throw new Error('获取省份数据失败');
     }
   },
 
@@ -216,7 +216,7 @@ export const apiService = {
       const response = await apiClient.get('/api/water-quality/basins', { params });
       return response.data;
     } catch (error) {
-      throw new Error('获取流域数据失败');
+      //throw new Error('获取流域数据失败');
     }
   },
 
@@ -229,7 +229,7 @@ export const apiService = {
       const response = await apiClient.get('/api/water-quality/statistics', { params });
       return response.data;
     } catch (error) {
-      throw new Error('获取水质统计数据失败');
+      //throw new Error('获取水质统计数据失败');
     }
   },
 
@@ -265,7 +265,7 @@ export const apiService = {
       
       return { success: true, message: '导出成功' };
     } catch (error) {
-      throw new Error('导出水质数据失败');
+      //throw new Error('导出水质数据失败');
     }
   },
 
@@ -292,7 +292,7 @@ export const apiService = {
       
       return { success: true, message: '导出成功' };
     } catch (error) {
-      throw new Error('导出鱼类数据失败');
+      //throw new Error('导出鱼类数据失败');
     }
   },
 
@@ -319,7 +319,7 @@ export const apiService = {
       
       return { success: true, message: '导出成功' };
     } catch (error) {
-      throw new Error('导出品种数据失败');
+      //throw new Error('导出品种数据失败');
     }
   },
 
@@ -346,7 +346,7 @@ export const apiService = {
       
       return { success: true, message: '导出成功' };
     } catch (error) {
-      throw new Error('导出用户数据失败');
+      //throw new Error('导出用户数据失败');
     }
   },
 
@@ -362,7 +362,7 @@ export const apiService = {
       return { success: true, message: '报告正在生成并下载...' };
     } catch (error) {
       console.error('导出综合报告错误:', error);
-      throw new Error('导出综合报告失败');
+      //throw new Error('导出综合报告失败');
     }
   },
 
@@ -377,7 +377,7 @@ export const apiService = {
       return response.data;
     } catch (error) {
       console.error("Upload data API error:", error);
-      throw new Error(`上传${dataType === 'water_quality' ? '水质' : '鱼类'}数据失败: ${error.response?.data?.error || error.message}`);
+      //throw new Error(`上传${dataType === 'water_quality' ? '水质' : '鱼类'}数据失败: ${error.response?.data?.error || error.message}`);
     }
   },
 
@@ -412,7 +412,7 @@ export const apiService = {
       return { success: true, message: `成功上传 ${uploadedCount} 条数据` };
     } catch (error) {
       console.error("Upload CSV data API error:", error);
-      throw new Error(`批量上传${dataType === 'water_quality' ? '水质' : '鱼类'}数据失败: ${error.response?.data?.error || error.message}`);
+      //throw new Error(`批量上传${dataType === 'water_quality' ? '水质' : '鱼类'}数据失败: ${error.response?.data?.error || error.message}`);
     }
   },
 
@@ -426,7 +426,7 @@ export const apiService = {
       return response.data;
     } catch (error) {
       console.error("Get recent data API error:", error);
-      throw new Error(`获取最近上传${dataType === 'water_quality' ? '水质' : '鱼类'}数据失败: ${error.response?.data?.error || error.message}`);
+      //throw new Error(`获取最近上传${dataType === 'water_quality' ? '水质' : '鱼类'}数据失败: ${error.response?.data?.error || error.message}`);
     }
   }
 };

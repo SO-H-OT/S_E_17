@@ -19,13 +19,21 @@ import {
   Chip,
   IconButton,
   Fab,
-  LinearProgress
+  LinearProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormHelperText,
 } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
 import { 
   CloudUpload, Send, Psychology, ImageSearch, Analytics, 
-  SmartToy, TrendingUp, Camera, Chat, AutoAwesome, Insights
+  SmartToy, TrendingUp, Camera, Chat, AutoAwesome, Insights,
+  Agriculture, Science, LocalFlorist
 } from '@mui/icons-material';
+// 添加引入 ReactMarkdown 库来渲染 Markdown 内容
+import ReactMarkdown from 'react-markdown';
 
 const fadeIn = keyframes`
   from {
@@ -234,6 +242,20 @@ function BlankPage() {
   const [predictionResult, setPredictionResult] = useState(null);
   const [predictionError, setPredictionError] = useState(null);
 
+  // 新增: 养殖建议表单状态
+  const [aquacultureForm, setAquacultureForm] = useState({
+    fishName: '',
+    averageWeight: '',
+    height: '',
+    width: '',
+    length1: '',
+    length2: '',
+    length3: ''
+  });
+  const [isGeneratingAdvice, setIsGeneratingAdvice] = useState(false);
+  const [aquacultureAdvice, setAquacultureAdvice] = useState(null);
+  const [aquacultureError, setAquacultureError] = useState(null);
+
   const handleInputChange = (e) => {
     setUserInput(e.target.value);
   };
@@ -380,6 +402,104 @@ function BlankPage() {
     }
   };
 
+  // 新增: 养殖建议表单变化处理
+  const handleAquacultureFormChange = (field, value) => {
+    setAquacultureForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // 修改: 生成养殖建议
+  const handleGenerateAdvice = async (e) => {
+    e.preventDefault();
+    
+    // 验证表单输入
+    const requiredFields = Object.entries(aquacultureForm);
+    const missingFields = requiredFields.filter(([key, value]) => !value.trim());
+    
+    if (missingFields.length > 0) {
+      setAquacultureError("请填写所有必填字段");
+      return;
+    }
+    
+    setIsGeneratingAdvice(true);
+    setAquacultureError(null);
+    
+    try {
+      const { OpenAI } = await import('openai');
+      
+      const openai = new OpenAI({
+        baseURL: 'https://api.deepseek.com',
+        apiKey: 'sk-b291c497c51f4a8583434f43cfa9c662',
+        dangerouslyAllowBrowser: true
+      });
+
+      // 增强Prompt，要求先分析生长状况再给出建议
+      const prompt = `
+      请分析以下鱼类的生长数据并提供养殖建议:
+      
+      鱼类名称: ${aquacultureForm.fishName}
+      平均体重: ${aquacultureForm.averageWeight} 克
+      平均高度: ${aquacultureForm.height} 厘米
+      平均宽度: ${aquacultureForm.width} 厘米
+      三个时期的平均长度变化: 
+      - 第一时期: ${aquacultureForm.length1} 厘米
+      - 第二时期: ${aquacultureForm.length2} 厘米
+      - 第三时期: ${aquacultureForm.length3} 厘米
+      
+      请先结合这些数据分析该鱼类的生长状况:
+      1. 生长状况是否正常(参考同类鱼的一般生长曲线)
+      2. 体型比例是否协调(长度、高度、宽度的关系)
+      3. 特别需要改善的方面(如生长过慢、过快或不均衡等)
+      4. 根据三个时期的长度变化趋势，评估生长速度和潜在问题
+      
+      然后，基于上述分析，提供全面的养殖建议，包括:
+      1. 水质参数控制（温度、pH值、溶氧量等）
+      2. 喂养方案调整（饵料类型、喂养频率、喂养量）
+      3. 生长空间要求
+      4. 疾病预防措施
+      5. 优化生长的具体建议
+      6. 特殊注意事项
+      
+      请使用Markdown格式组织回答，确保内容有清晰的结构，并特别强调与该鱼当前生长状况相关的具体建议。
+      分析和建议应当专业、具体且针对提供的数据，避免泛泛而谈。
+      `;
+
+      const completion = await openai.chat.completions.create({
+        messages: [
+          { 
+            role: "system", 
+            content: "你是一位资深的水产养殖专家，拥有丰富的各类鱼种养殖经验和生物学知识。你擅长分析鱼类生长数据，找出潜在问题并给出针对性的养殖方案。请基于用户提供的具体数据进行分析，不要提供泛泛的通用建议。使用Markdown格式使你的回复结构清晰。" 
+          },
+          { role: "user", content: prompt }
+        ],
+        model: "deepseek-chat",
+        stream: false,
+        temperature: 0.5, // 降低温度以获得更精确、更专业的回答
+        max_tokens: 2500  // 增加输出长度上限以包含全面分析
+      });
+      
+      if (completion.choices && completion.choices.length > 0 && completion.choices[0].message) {
+        setAquacultureAdvice(completion.choices[0].message.content);
+      } else {
+        console.error('API响应格式无效:', completion);
+        setAquacultureError('API响应格式无效，未找到有效的回复内容。');
+      }
+    } catch (error) {
+      console.error('生成养殖建议出错:', error);
+      let detailedErrorMessage = '抱歉，请求处理过程中出现错误，请稍后再试。';
+      if (error.response) {
+        detailedErrorMessage += ` (Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)})`;
+      } else if (error.message) {
+        detailedErrorMessage += ` (${error.message})`;
+      }
+      setAquacultureError(detailedErrorMessage);
+    } finally {
+      setIsGeneratingAdvice(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -484,7 +604,7 @@ function BlankPage() {
 
         <Grid container spacing={3} sx={{ mb: 4 }}>
           {/* AI 对话功能 */}
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <FeatureCard>
               <CardContent sx={{ textAlign: 'center', py: 3 }}>
                 <Chat sx={{ 
@@ -511,7 +631,7 @@ function BlankPage() {
           </Grid>
 
           {/* 图像识别功能 */}
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <FeatureCard>
               <CardContent sx={{ textAlign: 'center', py: 3 }}>
                 <ImageSearch sx={{ 
@@ -538,7 +658,7 @@ function BlankPage() {
           </Grid>
 
           {/* 生长预测功能 */}
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <FeatureCard>
               <CardContent sx={{ textAlign: 'center', py: 3 }}>
                 <TrendingUp sx={{ 
@@ -559,6 +679,33 @@ function BlankPage() {
                 </Typography>
                 <Typography variant="body2" sx={{ color: '#8E8E93', fontWeight: 500 }}>
                   鱼类生长趋势智能预测
+                </Typography>
+              </CardContent>
+            </FeatureCard>
+          </Grid>
+          
+          {/* 新增: 养殖建议功能 */}
+          <Grid item xs={12} md={3}>
+            <FeatureCard>
+              <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                <Agriculture sx={{ 
+                  fontSize: 40, 
+                  color: '#5856D6',
+                  mb: 2,
+                  animation: `${float} 3s ease-in-out infinite 1.5s`,
+                }} />
+                <Typography variant="h6" sx={{ 
+                  fontWeight: 700,
+                  background: 'linear-gradient(135deg, #5856D6 0%, #C644FC 100%)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  mb: 1,
+                }}>
+                  养殖建议
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#8E8E93', fontWeight: 500 }}>
+                  智能养殖方案与建议生成
                 </Typography>
               </CardContent>
             </FeatureCard>
@@ -777,6 +924,214 @@ function BlankPage() {
             </GlassCard>
           </Grid>
         </Grid>
+
+        {/* 新增: 养殖建议生成部分 */}
+        <GlassCard sx={{ mt: 3 }}>
+          <CardHeader
+            avatar={
+              <Avatar sx={{ 
+                background: 'linear-gradient(135deg, #5856D6 0%, #C644FC 100%)',
+                animation: `${pulse} 2s ease-in-out infinite`,
+              }}>
+                <Science />
+              </Avatar>
+            }
+            title={
+              <Typography variant="h6" sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #5856D6 0%, #C644FC 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                🌱 智能养殖建议生成
+              </Typography>
+            }
+            subheader={
+              <Typography variant="body2" sx={{ color: '#8E8E93', fontWeight: 500 }}>
+                基于DeepSeek AI的专业养殖方案定制
+              </Typography>
+            }
+          />
+          <CardContent>
+            {aquacultureError && (
+              <Alert 
+                severity="error" 
+                sx={{ 
+                  mb: 3,
+                  borderRadius: '12px',
+                  background: 'rgba(255, 59, 48, 0.1)',
+                  border: '1px solid rgba(255, 59, 48, 0.2)',
+                }}
+              >
+                <Typography variant="body2">
+                  <strong>错误：</strong>{aquacultureError}
+                </Typography>
+              </Alert>
+            )}
+
+            <Box component="form" onSubmit={handleGenerateAdvice} sx={{ mb: 3 }}>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} md={6}>
+                  <SmartTextField
+                    fullWidth
+                    label="鱼类名称"
+                    value={aquacultureForm.fishName}
+                    onChange={(e) => handleAquacultureFormChange('fishName', e.target.value)}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <SmartTextField
+                    fullWidth
+                    label="平均体重(g)"
+                    type="number"
+                    value={aquacultureForm.averageWeight}
+                    onChange={(e) => handleAquacultureFormChange('averageWeight', e.target.value)}
+                    required
+                    InputProps={{ inputProps: { min: 0, step: "0.1" } }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <SmartTextField
+                    fullWidth
+                    label="平均高度(cm)"
+                    type="number"
+                    value={aquacultureForm.height}
+                    onChange={(e) => handleAquacultureFormChange('height', e.target.value)}
+                    required
+                    InputProps={{ inputProps: { min: 0, step: "0.1" } }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <SmartTextField
+                    fullWidth
+                    label="平均宽度(cm)"
+                    type="number"
+                    value={aquacultureForm.width}
+                    onChange={(e) => handleAquacultureFormChange('width', e.target.value)}
+                    required
+                    InputProps={{ inputProps: { min: 0, step: "0.1" } }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" sx={{ 
+                    mb: 2, 
+                    fontWeight: 600,
+                    color: '#5856D6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                  }}>
+                    <LocalFlorist fontSize="small" />
+                    生长周期数据（三个时期的平均长度）
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <SmartTextField
+                    fullWidth
+                    label="第一时期长度(cm)"
+                    type="number"
+                    value={aquacultureForm.length1}
+                    onChange={(e) => handleAquacultureFormChange('length1', e.target.value)}
+                    required
+                    InputProps={{ inputProps: { min: 0, step: "0.1" } }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <SmartTextField
+                    fullWidth
+                    label="第二时期长度(cm)"
+                    type="number"
+                    value={aquacultureForm.length2}
+                    onChange={(e) => handleAquacultureFormChange('length2', e.target.value)}
+                    required
+                    InputProps={{ inputProps: { min: 0, step: "0.1" } }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <SmartTextField
+                    fullWidth
+                    label="第三时期长度(cm)"
+                    type="number"
+                    value={aquacultureForm.length3}
+                    onChange={(e) => handleAquacultureFormChange('length3', e.target.value)}
+                    required
+                    InputProps={{ inputProps: { min: 0, step: "0.1" } }}
+                  />
+                </Grid>
+              </Grid>
+
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <AppleButton 
+                  variant="primary"
+                  type="submit"
+                  disabled={isGeneratingAdvice || Object.values(aquacultureForm).some(value => !value.trim())}
+                  startIcon={isGeneratingAdvice ? <CircularProgress size={16} color="inherit" /> : <AutoAwesome />}
+                >
+                  {isGeneratingAdvice ? '生成中...' : '生成养殖建议'}
+                </AppleButton>
+              </Box>
+            </Box>
+
+            {aquacultureAdvice && (
+              <GlassCard sx={{ 
+                background: 'rgba(255, 255, 255, 0.5)',
+                backdropFilter: 'blur(15px)',
+                maxHeight: '400px',
+                overflow: 'auto',
+              }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ 
+                    mb: 2,
+                    fontWeight: 700,
+                    color: '#5856D6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                  }}>
+                    <Agriculture fontSize="small" />
+                    专业养殖建议
+                  </Typography>
+                  <Box sx={{ 
+                    p: 2, 
+                    background: 'rgba(255, 255, 255, 0.7)',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(88, 86, 214, 0.2)',
+                    '& h1, & h2, & h3, & h4, & h5, & h6': {
+                      color: '#5856D6',
+                      fontWeight: 700,
+                      marginBottom: '0.5em',
+                      marginTop: '1em',
+                    },
+                    '& h1:first-child, & h2:first-child, & h3:first-child': {
+                      marginTop: 0,
+                    },
+                    '& p': {
+                      marginBottom: '1em',
+                    },
+                    '& strong': {
+                      fontWeight: 700,
+                      color: '#1D1D1F',
+                    },
+                    '& ul, & ol': {
+                      paddingLeft: '1.5em',
+                      marginBottom: '1em',
+                    },
+                    '& li': {
+                      marginBottom: '0.5em',
+                    },
+                  }}>
+                    {/* 替换纯文本显示为Markdown渲染 */}
+                    <ReactMarkdown>
+                      {aquacultureAdvice}
+                    </ReactMarkdown>
+                  </Box>
+                </CardContent>
+              </GlassCard>
+            )}
+          </CardContent>
+        </GlassCard>
 
         {/* AI 对话部分 */}
         <GlassCard sx={{ mt: 3 }}>
